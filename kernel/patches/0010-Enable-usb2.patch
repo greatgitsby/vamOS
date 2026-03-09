@@ -1,0 +1,43 @@
+From c71df0213c971498d261b053650b9651dae74103 Mon Sep 17 00:00:00 2001
+From: Robin Reckmann <robin.reckmann@gmail.com>
+Date: Mon, 9 Feb 2026 18:59:01 +0900
+Subject: [PATCH] Enable usb2
+
+---
+ arch/arm64/boot/dts/qcom/sdm845-comma4.dts | 23 ++++++++++++++++++++++
+ 1 file changed, 23 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/sdm845-comma4.dts b/arch/arm64/boot/dts/qcom/sdm845-comma4.dts
+index 617096546a5f6e..771aba64a0fe3f 100644
+--- a/arch/arm64/boot/dts/qcom/sdm845-comma4.dts
++++ b/arch/arm64/boot/dts/qcom/sdm845-comma4.dts
+@@ -433,6 +433,29 @@
+ 	vdda-pll-supply = <&vdda_usb1_ss_core>;
+ };
+ 
++&usb_2 {
++	status = "okay";
++};
++
++&usb_2_dwc3 {
++	dr_mode = "host";
++};
++
++&usb_2_hsphy {
++	status = "okay";
++
++	vdd-supply = <&vdd_qusb_hs0>;
++	vdda-pll-supply = <&vdda_qusb_hs0_1p8>;
++	vdda-phy-dpdm-supply = <&vdda_qusb_hs0_3p1>;
++};
++
++&usb_2_qmpphy {
++	status = "okay";
++
++	vdda-phy-supply = <&vdda_usb2_ss_1p2>;
++	vdda-pll-supply = <&vdda_usb2_ss_core>;
++};
++
+ &wifi {
+ 	status = "okay";
+ 

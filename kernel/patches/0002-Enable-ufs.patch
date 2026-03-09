@@ -1,0 +1,47 @@
+From 099631a4766c847897c0ee1cb98c16db6c346f79 Mon Sep 17 00:00:00 2001
+From: Robin Reckmann <robin.reckmann@gmail.com>
+Date: Fri, 30 Jan 2026 00:20:33 +0900
+Subject: [PATCH] Enable ufs
+
+---
+ arch/arm64/boot/dts/qcom/sdm845-comma4.dts | 18 ++++++++++++++++++
+ arch/arm64/configs/comma4.config           |  6 ++++++
+ 2 files changed, 24 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/sdm845-comma4.dts b/arch/arm64/boot/dts/qcom/sdm845-comma4.dts
+index 8ad21e7b2c8c6f..8f4e0ea4634780 100644
+--- a/arch/arm64/boot/dts/qcom/sdm845-comma4.dts
++++ b/arch/arm64/boot/dts/qcom/sdm845-comma4.dts
+@@ -351,3 +351,21 @@
+ &uart9 {
+ 	status = "okay";
+ };
++
++&ufs_mem_hc {
++	status = "okay";
++
++	reset-gpios = <&tlmm 150 GPIO_ACTIVE_LOW>;
++
++	vcc-supply = <&vreg_l20a_2p95>;
++	vcc-max-microamp = <600000>;
++};
++
++&ufs_mem_phy {
++	status = "okay";
++
++	vdda-phy-supply = <&vdda_ufs1_core>;
++	vdda-pll-supply = <&vdda_ufs1_1p2>;
++	vdda-phy-max-microamp = <62900>;
++	vdda-pll-max-microamp = <18300>;
++};
+diff --git a/arch/arm64/configs/comma4.config b/arch/arm64/configs/comma4.config
+index e69de29bb2d1d6..a4ae8adffc293d 100644
+--- a/arch/arm64/configs/comma4.config
++++ b/arch/arm64/configs/comma4.config
+@@ -0,0 +1,6 @@
++#UFS
++CONFIG_SCSI_UFS_QCOM=y
++
++#QCOM PHYS
++CONFIG_PHY_QCOM_QMP=y
++CONFIG_PHY_QCOM_QMP_UFS=y

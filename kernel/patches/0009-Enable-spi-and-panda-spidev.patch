@@ -1,0 +1,51 @@
+From 178ad611b0c979ec65227cbf0a67718557c7b9b1 Mon Sep 17 00:00:00 2001
+From: Robin Reckmann <robin.reckmann@gmail.com>
+Date: Mon, 9 Feb 2026 18:36:05 +0900
+Subject: [PATCH] Enable spi and panda spidev
+
+---
+ arch/arm64/boot/dts/qcom/sdm845-comma4.dts | 10 ++++++++++
+ drivers/spi/spidev.c                       |  2 ++
+ 2 files changed, 12 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/sdm845-comma4.dts b/arch/arm64/boot/dts/qcom/sdm845-comma4.dts
+index a2545349a4e901..617096546a5f6e 100644
+--- a/arch/arm64/boot/dts/qcom/sdm845-comma4.dts
++++ b/arch/arm64/boot/dts/qcom/sdm845-comma4.dts
+@@ -378,6 +378,16 @@
+ 	status = "okay";
+ };
+ 
++&spi0 {
++	status = "okay";
++
++	panda_spi: spidev@0 {
++		compatible = "commaai,panda";
++		spi-max-frequency = <50000000>;
++		reg = <0>;
++	};
++};
++
+ &uart9 {
+ 	status = "okay";
+ };
+diff --git a/drivers/spi/spidev.c b/drivers/spi/spidev.c
+index 5300c942a2a44d..52a758dbe853c6 100644
+--- a/drivers/spi/spidev.c
++++ b/drivers/spi/spidev.c
+@@ -705,6 +705,7 @@ static const struct class spidev_class = {
+ static const struct spi_device_id spidev_spi_ids[] = {
+ 	{ .name = /* abb */ "spi-sensor" },
+ 	{ .name = /* cisco */ "spi-petra" },
++	{ .name = /* commaai */ "panda" },
+ 	{ .name = /* dh */ "dhcom-board" },
+ 	{ .name = /* elgin */ "jg10309-01" },
+ 	{ .name = /* gocontroll */ "moduline-module-slot"},
+@@ -738,6 +739,7 @@ static int spidev_of_check(struct device *dev)
+ static const struct of_device_id spidev_dt_ids[] = {
+ 	{ .compatible = "abb,spi-sensor", .data = &spidev_of_check },
+ 	{ .compatible = "cisco,spi-petra", .data = &spidev_of_check },
++	{ .compatible = "commaai,panda", .data = &spidev_of_check },
+ 	{ .compatible = "dh,dhcom-board", .data = &spidev_of_check },
+ 	{ .compatible = "elgin,jg10309-01", .data = &spidev_of_check },
+ 	{ .compatible = "gocontroll,moduline-module-slot", .data = &spidev_of_check},

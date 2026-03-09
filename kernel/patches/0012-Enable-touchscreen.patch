@@ -1,0 +1,114 @@
+From b3f664d5ca000931e783573828230659a4f72600 Mon Sep 17 00:00:00 2001
+From: Robin Reckmann <robin.reckmann@gmail.com>
+Date: Wed, 11 Feb 2026 13:43:27 +0900
+Subject: [PATCH] Enable touchscreen
+
+---
+ arch/arm64/boot/dts/qcom/sdm845-comma4.dts | 31 ++++++++++++++++++++++
+ arch/arm64/configs/comma4.config           |  3 +++
+ drivers/input/touchscreen/edt-ft5x06.c     |  8 +++++-
+ 3 files changed, 41 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/sdm845-comma4.dts b/arch/arm64/boot/dts/qcom/sdm845-comma4.dts
+index 7459a785bd52be..82ddca41338468 100644
+--- a/arch/arm64/boot/dts/qcom/sdm845-comma4.dts
++++ b/arch/arm64/boot/dts/qcom/sdm845-comma4.dts
+@@ -16,6 +16,17 @@
+ 		stdout-path = "serial0:115200n8";
+ 	};
+ 
++	lcd3v3: lcd3v3 {
++		status = "okay";
++
++		compatible = "regulator-fixed";
++		regulator-name = "lcd3v3";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++
++		gpio = <&pm8998_gpios 13 0>;
++	};
++
+ 	vph_pwr: vph-pwr-regulator {
+ 		compatible = "regulator-fixed";
+ 		regulator-name = "vph_pwr";
+@@ -366,6 +377,26 @@
+ 
+ };
+ 
++&i2c5 {
++	status = "okay";
++	clock-frequency = <100000>;
++
++	touchscreen@38 {
++		compatible = "focaltech,ft3367";
++		reg = <0x38>;
++
++		interrupt-parent = <&tlmm>;
++		interrupts = <125 IRQ_TYPE_EDGE_FALLING>;
++		reset-gpios = <&tlmm 104 GPIO_ACTIVE_LOW>;
++
++		iovcc-supply = <&vreg_s4a_1p8>;
++		vcc-supply = <&lcd3v3>;
++
++		touchscreen-size-x = <240>;
++		touchscreen-size-y = <536>;
++	};
++};
++
+ &qupv3_id_0 {
+ 	status = "okay";
+ };
+diff --git a/arch/arm64/configs/comma4.config b/arch/arm64/configs/comma4.config
+index 7de462fef3fcb6..3c6dcb7607c6b5 100644
+--- a/arch/arm64/configs/comma4.config
++++ b/arch/arm64/configs/comma4.config
+@@ -7,6 +7,9 @@ CONFIG_QCOM_GPI_DMA=m
+ #SENSORS
+ CONFIG_IIO_ST_LSM6DSX=m
+ 
++#TOUCHSCREEN
++CONFIG_TOUCHSCREEN_EDT_FT5X06=m
++
+ #UFS
+ CONFIG_SCSI_UFS_QCOM=y
+ 
+diff --git a/drivers/input/touchscreen/edt-ft5x06.c b/drivers/input/touchscreen/edt-ft5x06.c
+index bf498bd4dea965..50f60eb524f4e7 100644
+--- a/drivers/input/touchscreen/edt-ft5x06.c
++++ b/drivers/input/touchscreen/edt-ft5x06.c
+@@ -1475,6 +1475,10 @@ static const struct edt_i2c_chip_data edt_ft5x06_data = {
+ 	.max_support_points = 5,
+ };
+ 
++static const struct edt_i2c_chip_data edt_ft3367_data = {
++	.max_support_points = 10,
++};
++
+ static const struct edt_i2c_chip_data edt_ft5452_data = {
+ 	.max_support_points = 5,
+ };
+@@ -1503,6 +1507,7 @@ static const struct i2c_device_id edt_ft5x06_ts_id[] = {
+ 	{ .name = "edt-ft5x06", .driver_data = (long)&edt_ft5x06_data },
+ 	{ .name = "edt-ft5506", .driver_data = (long)&edt_ft5506_data },
+ 	{ .name = "ev-ft5726", .driver_data = (long)&edt_ft5506_data },
++	{ .name = "ft3367", .driver_data = (long)&edt_ft3367_data },
+ 	{ .name = "ft5452", .driver_data = (long)&edt_ft5452_data },
+ 	/* Note no edt- prefix for compatibility with the ft6236.c driver */
+ 	{ .name = "ft6236", .driver_data = (long)&edt_ft6236_data },
+@@ -1519,6 +1524,7 @@ static const struct of_device_id edt_ft5x06_of_match[] = {
+ 	{ .compatible = "edt,edt-ft5406", .data = &edt_ft5x06_data },
+ 	{ .compatible = "edt,edt-ft5506", .data = &edt_ft5506_data },
+ 	{ .compatible = "evervision,ev-ft5726", .data = &edt_ft5506_data },
++	{ .compatible = "focaltech,ft3367", .data = &edt_ft3367_data },
+ 	{ .compatible = "focaltech,ft5426", .data = &edt_ft5506_data },
+ 	{ .compatible = "focaltech,ft5452", .data = &edt_ft5452_data },
+ 	/* Note focaltech vendor prefix for compatibility with ft6236.c */
+@@ -1536,7 +1542,7 @@ static struct i2c_driver edt_ft5x06_ts_driver = {
+ 		.dev_groups = edt_ft5x06_groups,
+ 		.of_match_table = edt_ft5x06_of_match,
+ 		.pm = pm_sleep_ptr(&edt_ft5x06_ts_pm_ops),
+-		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
++		.probe_type = PROBE_FORCE_SYNCHRONOUS,
+ 	},
+ 	.id_table = edt_ft5x06_ts_id,
+ 	.probe    = edt_ft5x06_ts_probe,

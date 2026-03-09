@@ -1,0 +1,98 @@
+From e942ed8d3e616d6af30d5a1ef40752d2ca82351d Mon Sep 17 00:00:00 2001
+From: Robin Reckmann <robin.reckmann@gmail.com>
+Date: Sat, 14 Feb 2026 17:44:35 +0900
+Subject: [PATCH] Enable gpu and panel
+
+---
+ arch/arm64/boot/dts/qcom/sdm845-comma4.dts | 52 ++++++++++++++++++++++
+ arch/arm64/configs/comma4.config           |  3 ++
+ 2 files changed, 55 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/sdm845-comma4.dts b/arch/arm64/boot/dts/qcom/sdm845-comma4.dts
+index 82ddca41338468..59c5ed783595d0 100644
+--- a/arch/arm64/boot/dts/qcom/sdm845-comma4.dts
++++ b/arch/arm64/boot/dts/qcom/sdm845-comma4.dts
+@@ -356,10 +356,23 @@
+ 			   <GCC_LPASS_SWAY_CLK>;
+ };
+ 
++&gmu {
++	status = "okay";
++};
++
+ &gpi_dma0 {
+ 	status = "okay";
+ };
+ 
++&gpu {
++	status = "okay";
++
++	zap-shader {
++		memory-region = <&gpu_mem>;
++		firmware-name = "qcom/sdm845/a630_zap.mbn";
++	};
++};
++
+ &i2c4 {
+ 	status = "okay";
+ 	clock-frequency = <400000>;
+@@ -401,6 +414,45 @@
+ 	status = "okay";
+ };
+ 
++&mdss {
++	status = "okay";
++};
++
++&mdss_dsi0 {
++	status = "okay";
++	vdda-supply = <&vdda_mipi_dsi0_1p2>;
++
++	panel@0 {
++		status = "okay";
++		compatible = "commaai,bantian";
++
++		reg = <0>;
++
++		vddio-supply = <&vreg_l14a_1p88>;
++		vdd-supply = <&lcd3v3>;
++
++		reset-gpios = <&tlmm 6 GPIO_ACTIVE_LOW>;
++
++		rotation = <90>;
++
++		port {
++			panel_in: endpoint {
++				remote-endpoint = <&mdss_dsi0_out>;
++			};
++		};
++	};
++};
++
++&mdss_dsi0_out {
++	remote-endpoint = <&panel_in>;
++	data-lanes = <0>;
++};
++
++&mdss_dsi0_phy {
++	status = "okay";
++	vdds-supply = <&vdda_mipi_dsi0_pll>;
++};
++
+ &mss_pil {
+ 	status = "okay";
+ 	firmware-name = "qcom/sdm845/mba.mbn", "qcom/sdm845/modem_nm.mbn";
+diff --git a/arch/arm64/configs/comma4.config b/arch/arm64/configs/comma4.config
+index 3c6dcb7607c6b5..139e19b64d93d5 100644
+--- a/arch/arm64/configs/comma4.config
++++ b/arch/arm64/configs/comma4.config
+@@ -4,6 +4,9 @@ CONFIG_I2C_QCOM_GENI=m
+ #I2C DMA
+ CONFIG_QCOM_GPI_DMA=m
+ 
++#PANEL
++CONFIG_DRM_PANEL_COMMAAI_BANTIAN=m
++
+ #SENSORS
+ CONFIG_IIO_ST_LSM6DSX=m
+ 

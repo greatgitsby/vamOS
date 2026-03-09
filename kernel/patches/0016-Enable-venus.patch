@@ -1,0 +1,25 @@
+From c25279c9846efc27aa5ec9205844026ae28a2021 Mon Sep 17 00:00:00 2001
+From: Robin Reckmann <robin.reckmann@gmail.com>
+Date: Tue, 11 Feb 2025 18:50:33 +0900
+Subject: [PATCH] Enable venus
+
+---
+ arch/arm64/boot/dts/qcom/sdm845-comma4.dts | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/sdm845-comma4.dts b/arch/arm64/boot/dts/qcom/sdm845-comma4.dts
+index 59c5ed783595d0..ea4b3053d70830 100644
+--- a/arch/arm64/boot/dts/qcom/sdm845-comma4.dts
++++ b/arch/arm64/boot/dts/qcom/sdm845-comma4.dts
+@@ -540,6 +540,11 @@
+ 	vdda-pll-supply = <&vdda_usb2_ss_core>;
+ };
+ 
++&venus {
++	firmware-name = "qcom/venus-5.2/venus.mbn";
++	status = "okay";
++};
++
+ &wifi {
+ 	status = "okay";
+ 

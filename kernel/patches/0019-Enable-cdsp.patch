@@ -1,0 +1,25 @@
+From 1bbc3fb256c102310bd373837eba8b985f31803b Mon Sep 17 00:00:00 2001
+From: Robin Reckmann <robin.reckmann@gmail.com>
+Date: Fri, 20 Feb 2026 01:54:13 +0900
+Subject: [PATCH] Enable cdsp
+
+---
+ arch/arm64/boot/dts/qcom/sdm845-comma4.dts | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/sdm845-comma4.dts b/arch/arm64/boot/dts/qcom/sdm845-comma4.dts
+index 6c736c82d57b11..060c8822a75bcf 100644
+--- a/arch/arm64/boot/dts/qcom/sdm845-comma4.dts
++++ b/arch/arm64/boot/dts/qcom/sdm845-comma4.dts
+@@ -360,6 +360,11 @@
+ 	};
+ };
+ 
++&cdsp_pas {
++	status = "okay";
++	firmware-name = "qcom/sdm845/cdsp.mbn";
++};
++
+ &gcc {
+ 	protected-clocks = <GCC_QSPI_CORE_CLK>,
+ 			   <GCC_QSPI_CORE_CLK_SRC>,

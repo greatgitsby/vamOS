@@ -20,6 +20,18 @@ if [ ! -f "$KERNEL_DIR/Makefile" ]; then
   git -C "$DIR" submodule update --init "$KERNEL_DIR"
 fi
 
+# Reset kernel submodule to base commit for clean state
+echo "Resetting kernel submodule to base commit..."
+git -C "$DIR" submodule update --force "$KERNEL_DIR"
+git -C "$KERNEL_DIR" clean -fd
+
+# Apply kernel patches
+PATCHES_DIR="$DIR/kernel/patches"
+if [ -d "$PATCHES_DIR" ] && ls "$PATCHES_DIR"/*.patch 1>/dev/null 2>&1; then
+  echo "Applying kernel patches..."
+  git -C "$KERNEL_DIR" am "$PATCHES_DIR"/*.patch
+fi
+
 # Build docker container
 echo "Building vamos-builder docker image"
 export DOCKER_BUILDKIT=1
