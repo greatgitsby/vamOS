@@ -20,6 +20,23 @@ if [ ! -f "$KERNEL_DIR/Makefile" ]; then
   git -C "$DIR" submodule update --init "$KERNEL_DIR"
 fi
 
+# Ensure Docker daemon is running
+if ! docker info >/dev/null 2>&1; then
+  echo "Docker daemon not running, attempting to start..."
+  sudo dockerd &>/dev/null &
+  for i in $(seq 1 15); do
+    if docker info >/dev/null 2>&1; then
+      echo "Docker daemon started successfully."
+      break
+    fi
+    if [ "$i" -eq 15 ]; then
+      echo "ERROR: Failed to start Docker daemon after 15 seconds."
+      exit 1
+    fi
+    sleep 1
+  done
+fi
+
 # Build docker container
 echo "Building vamos-builder docker image"
 export DOCKER_BUILDKIT=1
