@@ -6,7 +6,7 @@ VOID_ROOTFS_FILE="void-aarch64-ROOTFS-20250202.tar.xz"
 VOID_ROOTFS_SHA256="01a30f17ae06d4d5b322cd579ca971bc479e02cc284ec1e5a4255bea6bac3ce6"
 
 # Make sure we're in the correct spot
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null && pwd)"
 cd "$DIR"
 
 BUILD_DIR="$DIR/build"
@@ -125,7 +125,7 @@ exec_as_root bash -c "set -e; export ROOTFS_DIR=$ROOTFS_DIR GIT_HASH=$GIT_HASH; 
 echo "Profiling rootfs"
 MOUNT_CONTAINER_ID="$MOUNT_CONTAINER_ID" ROOTFS_DIR="$ROOTFS_DIR" \
   ROOTFS_IMAGE="$ROOTFS_IMAGE" OUTPUT_DIR="$OUTPUT_DIR" \
-  "$DIR/scripts/profile_rootfs.sh"
+  "$DIR/tools/profile_rootfs.sh"
 
 # Unmount image
 echo "Unmount filesystem"
