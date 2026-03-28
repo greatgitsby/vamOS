@@ -32,3 +32,55 @@ NNNN-SUBSYSTEM-description.patch
 - `description` — short kebab-case summary of the change
 
 Example: `0001-defconfig-add-vamos.patch`
+
+## TODO
+
+comma threex:
+- [x] ufs
+- [x] display
+- [ ] i2c
+  - [ ] TODO: look at device tree
+- [x] wifi
+  - [ ] testing (set benchmarks, test case)
+- [x] usb
+- [x] modem
+- [ ] sound
+- [ ] SPI
+- [ ] GPS
+- [ ] cameras (OX03C10)
+  - [ ] kernel wiring
+  - [ ] ISP
+  - [ ] openpilot
+- [ ] graphics
+  - [ ] gpu
+- [ ] opencl - via rusticl / msm_drm
+
+comma four:
+- [x] ufs
+- [x] display
+- [ ] i2c (IMU/temp/...)
+- [x] wifi
+  - [ ] testing (set benchmarks, test case)
+- [x] usb
+- [x] modem
+- [ ] sound
+- [ ] SPI
+- [ ] GPS
+- [ ] cameras (OS04C10)
+  - [ ] kernel wiring
+  - [ ] ISP
+  - [ ] openpilot
+- [ ] graphics
+  - [ ] gpu
+- [ ] opencl - via rusticl / msm_drm
+
+openpilot support:
+- [ ]
+
+tinygrad support:
+- [ ] msm_drm
+
+validation:
+- [ ] dmesg is clean (background in https://github.com/commaai/agnos-builder/issues/325)
+- [ ] test_onroad passes
+- [ ] testing closet
