@@ -118,13 +118,13 @@ jobs:
         run: |
           TAG="v${VERSION}"
           cd vamos-images
-          git checkout --orphan "$TAG"
+          git checkout --orphan release
           cp ../build/ota/*.img .
           git add .
           git -c user.name="github-actions" -c user.email="actions@github.com" \
             commit -m "release images for $TAG"
           git tag "$TAG"
-          git push origin "$TAG" --force
+          git push origin "refs/tags/$TAG" --force
 
       - name: create release
         if: steps.check-key.outputs.has_key == 'true'
