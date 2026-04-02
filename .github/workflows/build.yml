@@ -87,7 +87,18 @@ jobs:
           name: system.erofs.img
           path: build/
 
+      - name: check deploy key
+        id: check-key
+        run: |
+          if [ -n "${{ secrets.VAMOS_IMAGES_DEPLOY_KEY }}" ]; then
+            echo "has_key=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_key=false" >> $GITHUB_OUTPUT
+            echo "::warning::VAMOS_IMAGES_DEPLOY_KEY secret is not set — skipping image publish and release."
+          fi
+
       - name: generate manifest
+        if: steps.check-key.outputs.has_key == 'true'
         run: |
           VERSION=$(cat userspace/root/VERSION)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
@@ -95,6 +106,7 @@ jobs:
           IMAGES_URL=$IMAGES_URL python3 tools/build/package_ota.py
 
       - name: push images to vamos-images
+        if: steps.check-key.outputs.has_key == 'true'
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository_owner }}/vamos-images
@@ -102,6 +114,7 @@ jobs:
           path: vamos-images
 
       - name: commit and tag images
+        if: steps.check-key.outputs.has_key == 'true'
         run: |
           TAG="v${VERSION}"
           cd vamos-images
@@ -114,6 +127,7 @@ jobs:
           git push origin "$TAG" --force
 
       - name: create release
+        if: steps.check-key.outputs.has_key == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -130,3 +144,12 @@ jobs:
             --target "${{ github.sha }}" \
             --notes "Automated release from commit ${{ github.sha }}" \
             build/ota/manifest.json
+
+      - name: post setup instructions
+        if: steps.check-key.outputs.has_key == 'false'
+        run: |
+          echo "::warning::VAMOS_IMAGES_DEPLOY_KEY is not configured. To enable image publishing:"
+          echo "::warning::1. Create a ${{ github.repository_owner }}/vamos-images repo"
+          echo "::warning::2. Generate an SSH deploy key: ssh-keygen -t ed25519 -f vamos-images-deploy-key -N \"\""
+          echo "::warning::3. Add the public key to ${{ github.repository_owner }}/vamos-images as a deploy key with write access"
+          echo "::warning::4. Add the private key as VAMOS_IMAGES_DEPLOY_KEY secret in ${{ github.repository }}"
