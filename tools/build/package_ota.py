@@ -14,7 +14,8 @@ OTA_OUTPUT_DIR = OUTPUT_DIR / "ota"
 SECTOR_SIZE = 4096
 CHUNK_SIZE = 52_428_800  # 50 MB - must be under raw.githubusercontent.com's 100 MB limit
 
-IMAGES_URL = os.environ.get("IMAGES_URL", "https://github.com/commaai/vamos-images/raw/latest")
+VERSION = open(ROOT / "userspace" / "root" / "VERSION").read().strip()
+IMAGES_URL = os.environ.get("IMAGES_URL", f"https://github.com/commaai/vamos-images/raw/v{VERSION}")
 
 GPT = namedtuple('GPT', ['lun', 'name', 'path', 'start_sector', 'num_sectors', 'has_ab', 'full_check'])
 GPTS = [
