@@ -171,6 +171,12 @@ to `cam-cpas`, req-mgr bound both sync and CPAS, and the expected nodes returned
 `/dev/video0` named `cam-req-mgr`, `/dev/video1` named `cam_sync`,
 `/dev/media0`, `/dev/media1`, and `/dev/v4l-subdev0`.
 
+Commit `d594129` trimmed the CPAS and virtual CDM client lists to the current
+openpilot path and booted on mici as `6.18.0-vamos-d594129`. The virtual CDM
+interface bound as `ac00000.camera-kt:cam-cdm-intf -> msm_cam_cdm_intf`, req-mgr
+bound sync, CPAS, and CDM interface, and the same req-mgr/sync/CPAS user nodes
+remained present.
+
 ## Translation Notes
 
 - Add a downstream root compatible with `"qcom,camera_kt"`. The direct

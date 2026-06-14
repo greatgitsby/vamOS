@@ -234,6 +234,11 @@ Parallel from day one:
   CSIPHY0-2, CCI0, CSID0-2, IFE0-2, virtual CDM, CPAS CDM, BPS0, and ICP0.
   The next DTS checkpoints should be isolated as SMMU, real CPAS CDM, ISP/ICP,
   and then CCI/CSIPHY/sensors.
+- `d594129` booted on mici as `6.18.0-vamos-d594129`. The trimmed
+  CDM-interface checkpoint binds `ac00000.camera-kt:cam-cdm-intf` to
+  `msm_cam_cdm_intf`; req-mgr still binds sync, CPAS, and CDM interface; and
+  `/dev/video0`, `/dev/video1`, `/dev/media0`, `/dev/media1`, and
+  `/dev/v4l-subdev0` are present.
 
 ## 2. Lane P0 - Source Submodule And Audit
 
