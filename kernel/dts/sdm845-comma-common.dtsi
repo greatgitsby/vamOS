@@ -583,6 +583,16 @@
 			};
 		};
 
+		cam_cdm_intf: cam-cdm-intf {
+			compatible = "qcom,cam-cdm-intf";
+			cell-index = <0>;
+			label = "cam-cdm-intf";
+			num-hw-cdm = <1>;
+			cdm-client-names = "vfe", "jpegdma", "jpegenc",
+					   "fd", "lrmecdm";
+			status = "okay";
+		};
+
 		cam_req_mgr: cam-req-mgr {
 			compatible = "qcom,cam-req-mgr";
 			status = "okay";
