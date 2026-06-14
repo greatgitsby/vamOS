@@ -105,6 +105,23 @@ on-device (`larch64`). mici (10.0.0.22) was offline during this work.
   ISP, commit e8fe170ad). Extracting them into helper files per the original
   lane split is optional polish, not required for the build to pass.
 
+### openpilot — standalone bring-up tool (committed as temp)
+
+`system/camerad/snapshot_standalone.cc` + a `snapshot_standalone` Program in
+`system/camerad/SConscript` are committed (commit `14d9d1bbf`) as the camera
+bring-up dev loop for this migration. Imported from the vamOS reference copy
+(`tools/camera/snapshot_standalone.cc`, stash commit `336159a`; see that file's
+README for the full on-device build/run recipe). It reuses the real
+`SpectraMaster`/`SpectraCamera` path, so it exercises ALL the migrated code
+(CSIPHY, ISP, probe-buffer sizing, node discovery, UAPI guard), brings up every
+camera, writes `snap_{wide,road,driver}.{nv12,png}`, and exits 0 if all enabled
+cameras produced a frame else 1. Verified: its object compiles clean against the
+migrated tree off-device. On-device build note: openpilot's `SConstruct` reads
+`selfdrive/modeld/SConscript` whose tinygrad probe aborts scons on the comma
+four — skip that one line for the build (see the README). The full link + run is
+blocked on the kernel DTS gate (no camera nodes yet; see
+`validation/2026-06-14-mici-node-probe.md`).
+
 ### vamOS — not started by this worker
 
 P0/K/V lanes (submodule pin exists; kernel import/build/DTS/validation pending).
@@ -173,12 +190,15 @@ Parallel from day one:
   `camera-driver` submodule and Qualcomm's own `camera-driver/Kbuild`.
 - `./vamos build kernel` completes with `CONFIG_SPECTRA_CAMERA=y`; the build log
   shows `drivers/media/platform/msm/camera/built-in.a` linked into the kernel.
-- Latest local build artifact: `/home/trey/claudes/vamOS/build/boot.img`.
-- Latest build log: `/tmp/spectra-qcom-build-kbuild.log`.
-- Next kernel validation step is booting this image and checking node/probe
-  behavior with the standalone camera test flow.
-- DTS work remains a fresh-audit task. Do not import the old branch's device
-  tree changes.
+- Latest flashed/tested kernel had Spectra built in and booted on mici, but no
+  camera device nodes appeared because DT has no `qcom,camera_kt` root yet.
+  Dmesg reported `No matching device found for camera_kt driver = -19`.
+- K3.1 fresh DT audit is recorded in `docs/cameras/dts-audit.md`.
+- K3.2 is now in progress. First-pass DT root plumbing adds `qcom,camera_kt`,
+  `qcom,cam-req-mgr`, and `qcom,cam-sync`; `./vamos build kernel` succeeds and
+  the generated mici DTB contains those nodes. The remaining K3.2 work is the
+  downstream hardware topology without importing the old branch's device tree
+  changes.
 
 ## 2. Lane P0 - Source Submodule And Audit
 
@@ -454,7 +474,7 @@ Dependencies: K1.1
 
 Files:
 
-- tracked audit note under `docs/cameras/dts-audit.md` if useful
+- `docs/cameras/dts-audit.md`
 
 Work:
 
@@ -463,6 +483,9 @@ Work:
 - List existing camera-related disabled nodes, regulator names, GPIOs, clocks,
   power domains, and interconnects.
 - Identify register overlaps with mainline `camss` nodes that must be disabled.
+- Reference the pinned Qualcomm driver, public Google/downstream Qualcomm camera
+  DTS examples, and the legacy AGNOS/openpilot SDM845 kernel in
+  `/home/trey/claudes/agnos-builder`.
 
 Acceptance:
 
@@ -472,6 +495,8 @@ rg -n "cam|cci|csiphy|vfe|ife|camera|mclk|regulator" \
   /home/trey/claudes/vamOS/kernel/linux/arch/arm64/boot/dts/qcom | head -200
 git -C /home/trey/claudes/vamOS status --short
 ```
+
+Status: DONE in `docs/cameras/dts-audit.md`.
 
 Conflict notes: audit can run in parallel; do not edit DTS in this task.
 
@@ -489,10 +514,21 @@ Files:
 
 Work:
 
-- Add CPAS, CDM, CCI, CSIPHY, CSID/VFE/IFE, ICP/BPS, and sensor-slot nodes needed
-  by recent `camera_kt`.
-- Wire regulators and mclk pinctrl states.
-- Disable overlapping upstream `camss`/`cci` nodes if needed.
+- Add a downstream camera root compatible with `qcom,camera_kt` so
+  `camera_kt/drivers/camera_main.c` can bind and populate child platform
+  devices.
+- Add the compiled `camera_kt` node families: cam-req-mgr, cam-sync, SMMU,
+  CPAS, CDM interface/CDM, CCI, CSIPHY, CSID/VFE/IFE, ICP/A5/IPE/BPS, JPEG,
+  LRME, and four sensor slots.
+- Do not add FD, OPE, TFE, SFE, or custom camera nodes unless their build
+  configs are enabled.
+- Keep upstream mainline `camss` and `cci` disabled to avoid register overlap.
+- Translate legacy GDSC regulator supplies to mainline CAMCC `power-domains`
+  where the recent driver supports genpd.
+- Wire comma-specific regulators, MCLK/reset/VANA pinctrl states, CCI masters,
+  and sensor slots from the legacy AGNOS/openpilot tree after translating
+  property names for recent `camera_kt` (`gpios-shared`, `csiphy-sd-index`,
+  `cci-master`).
 - Preserve platform and subdev names when practical.
 
 Acceptance:
