@@ -601,7 +601,7 @@
 			cam_smmu_cpas_cdm: msm-cam-smmu-cpas-cdm {
 				compatible = "qcom,msm-cam-smmu-cb";
 				iommus = <&apps_smmu 0x1000 0x0>;
-				cam-smmu-label = "cpas-cdm0";
+				cam-smmu-label = "cpas-cdm0", "cpas-cdm";
 
 				iova-mem-map {
 					iova-mem-region-io {
