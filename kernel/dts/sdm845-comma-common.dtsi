@@ -508,6 +508,11 @@
 			compatible = "qcom,cam-sync";
 			status = "okay";
 		};
+
+		cam_req_mgr: cam-req-mgr {
+			compatible = "qcom,cam-req-mgr";
+			status = "okay";
+		};
 	};
 };
 
