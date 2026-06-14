@@ -123,6 +123,13 @@ CAM_INFO: CAM-UTIL: cam_main_probe: 320: Spectra camera_kt driver initialized rc
 Treat the combined req-mgr/sync child shape from `5b02808` as failed, not the
 root itself. Continue by changing one child variable at a time.
 
+Commit `12b6ff1` added only the `qcom,cam-sync` child under that proven root.
+That image also booted on mici. Sysfs showed
+`ac00000.camera-kt:cam-sync` populated and bound under
+`/sys/bus/platform/drivers/cam_sync`. No `/dev/video*` or `/dev/media*` nodes
+appeared, which matches the driver: sync registers a component and waits for
+req-mgr to become the component master.
+
 ## Translation Notes
 
 - Add a downstream root compatible with `"qcom,camera_kt"`. The direct
@@ -161,8 +168,9 @@ root itself. Continue by changing one child variable at a time.
 
 1. Keep the direct active `camera-kt` root under `&soc`; it boots on mici in
    commit `c6783a6`.
-2. Add `qcom,cam-sync` alone and verify boot. No video node is expected yet
-   because sync only registers a component until req-mgr becomes the master.
+2. Keep `qcom,cam-sync`; it boots and binds in commit `12b6ff1`. No video node
+   is expected yet because sync only registers a component until req-mgr becomes
+   the master.
 3. Add `qcom,cam-req-mgr` after sync is isolated, then verify boot plus
    `/dev/video*` creation.
 4. Add SMMU, CPAS, CDM, sync/request-manager, and verify platform device probes.

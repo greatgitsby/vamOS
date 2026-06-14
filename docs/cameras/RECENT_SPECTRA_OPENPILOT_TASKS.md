@@ -201,9 +201,13 @@ Parallel from day one:
   `6.18.0-vamos-c6783a6`, and dmesg reports
   `Spectra camera_kt driver initialized rc : 0`. No camera device nodes appear
   yet because no child platform devices are present.
+- A sync-only child increment was tested in commit `12b6ff1` and also boots on
+  mici. `uname -a` reports `6.18.0-vamos-12b6ff1`; sysfs shows
+  `ac00000.camera-kt:cam-sync` bound to `cam_sync`. No video/media nodes appear
+  yet because req-mgr is not present.
 - K3.1 fresh DT audit is recorded in `docs/cameras/dts-audit.md`.
-- K3.2 is now in progress. The next attempt should add `qcom,cam-sync` alone,
-  then add `qcom,cam-req-mgr` only after sync has booted by itself.
+- K3.2 is now in progress. The next attempt should add `qcom,cam-req-mgr`
+  under the proven root+sync shape.
 
 ## 2. Lane P0 - Source Submodule And Audit
 
