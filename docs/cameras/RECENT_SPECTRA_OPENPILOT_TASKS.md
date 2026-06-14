@@ -254,6 +254,22 @@ Parallel from day one:
   CPAS CDM increment and boots on mici as `6.18.0-vamos-818c807`. Do not re-add
   the `a26a734` CPAS CDM shape wholesale; reintroduce it as smaller
   boot-verified slices.
+- Split CPAS CDM retest results:
+  - `f2fc7a2` adds only the SMMU alias
+    `cam-smmu-label = "cpas-cdm0", "cpas-cdm"` and boots on mici as
+    `6.18.0-vamos-f2fc7a2`.
+  - `3655f26` adds the `qcom,cam170-cpas-cdm0` node with full legacy-style
+    resources and `ife`/`ife3` clients, but leaves it `status = "disabled"`.
+    It boots on mici as `6.18.0-vamos-3655f26`; diagnostics show the same
+    req-mgr/sync/CPAS/virtual-CDM/SMMU nodes as the SMMU checkpoint, and no
+    hardware CDM bind.
+  - `70e1533` enables the same node but trims `cdm-client-names` to the legacy
+    AGNOS value `"ife"`. It still does not boot: `uname -a` never returns, and a
+    10-second MDMA `profile-boot` again reaches ABL `Exit BS` / `UEFI End` at
+    about 4.56s with no Linux output. `dde427c` reverts only that enablement
+    and boots on mici as `6.18.0-vamos-dde427c`.
+  - Conclusion: the SMMU alias and disabled DT node are safe; the failure is the
+    enabled CPAS CDM probe/power/reset path, not the extra `ife3` client name.
 
 ## 2. Lane P0 - Source Submodule And Audit
 
@@ -578,10 +594,12 @@ Work:
 - Add only the `camera_kt` node families consumed by the current openpilot
   branch: cam-req-mgr, cam-sync, SMMU, CPAS, CDM interface/CPAS CDM, CCI,
   CSIPHY0-2, CSID0-2, VFE/IFE0-2, ICP/A5/BPS, and three sensor slots.
-- Real CPAS CDM is not accepted yet. Commit `a26a734` added a
-  `cpas-cdm0@ac48000` node with `ife`/`ife3` clients and caused a pre-Linux boot
-  stall; commit `818c807` reverted it and restored boot. Next CPAS CDM work
-  must split the change into narrower checkpoints.
+- Real CPAS CDM is not accepted yet. The SMMU alias (`f2fc7a2`) and disabled
+  hardware CDM node (`3655f26`) both boot; enabling that node with only the
+  legacy `"ife"` client (`70e1533`) causes the same no-Linux-output boot stall
+  seen in `a26a734`. Commit `dde427c` restores the booting disabled-node state.
+  Next CPAS CDM work should fix or instrument the enabled probe/power/reset
+  path before adding `ife3` back.
 - Do not add JPEG, LRME, FD, OPE, TFE, SFE, custom, IPE, or fourth-camera nodes
   unless openpilot starts consuming them.
 - Keep upstream mainline `camss` and `cci` disabled to avoid register overlap.
