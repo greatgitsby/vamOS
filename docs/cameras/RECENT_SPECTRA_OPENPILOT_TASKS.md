@@ -211,9 +211,20 @@ Parallel from day one:
 - An addressable-root increment was tested in commit `48cdb8e` and boots on
   mici. Adding `#address-cells`, `#size-cells`, and `ranges` to the camera root
   preserves req-mgr/sync binding and the same video/media nodes.
+- A CPAS child increment was tested across three commits:
+  - `ed1c859` booted with CPAS present in the live DT, then failed CPAS bind at
+    OPP table setup (`OPP add_table failed ... rc -19`).
+  - `535a0be` added the CPAS OPP table and booted, then failed CPAS bind at the
+    default AHB ICC vote because the AHB table had only two usecases while the
+    driver voted enum level 3.
+  - `9703bd1` expanded the AHB vote table to eight enum-indexed usecases. This
+    boots on mici as `6.18.0-vamos-9703bd1`; `ac40000.cam-cpas` binds to
+    `cam-cpas`; req-mgr binds both sync and CPAS; `/dev/video0` is
+    `cam-req-mgr`, `/dev/video1` is `cam_sync`, and `/dev/media0`,
+    `/dev/media1`, and `/dev/v4l-subdev0` are present.
 - K3.1 fresh DT audit is recorded in `docs/cameras/dts-audit.md`.
-- K3.2 is now in progress. The next attempt should add CPAS as the first real
-  hardware-probing node under the proven addressable root+sync+req-mgr shape.
+- K3.2 CPAS base is done through the boot-verified checkpoint in `9703bd1`.
+  The next DTS increment should add SMMU and CDM against this proven CPAS base.
 
 ## 2. Lane P0 - Source Submodule And Audit
 

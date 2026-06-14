@@ -141,6 +141,29 @@ That image booted on mici and preserved the req-mgr/sync bindings and
 `/dev/video0`/`/dev/video1` nodes. This is the base shape for later children
 with `reg` ranges.
 
+Commit `ed1c859` added CPAS as the first real hardware-probing child under the
+proven addressable root. The image booted, and the live DT showed
+`cam-cpas@ac40000`, but CPAS failed bind before video nodes appeared:
+
+```text
+CAM_ERR: CAM-UTIL: cam_soc_util_configure_opp: 1803: OPP add_table failed for dev ac40000.cam-cpas rc -19
+```
+
+Commit `535a0be` added an `operating-points-v2` table for the CPAS
+`slow_ahb_clk_src` rates. The image booted and passed OPP setup, but CPAS then
+failed its default AHB ICC vote because the AHB table had only two usecases and
+the driver voted `CAM_SVS_VOTE` at enum level 3:
+
+```text
+CAM_ERR: CAM-UTIL: cam_soc_bus_client_update_request: 64: Invalid vote level=3, usecases=2
+```
+
+Commit `9703bd1` expanded `cam-ahb-bw-KBps` to eight enum-indexed usecases.
+That image booted on mici as `6.18.0-vamos-9703bd1`, `ac40000.cam-cpas` bound
+to `cam-cpas`, req-mgr bound both sync and CPAS, and the expected nodes returned:
+`/dev/video0` named `cam-req-mgr`, `/dev/video1` named `cam_sync`,
+`/dev/media0`, `/dev/media1`, and `/dev/v4l-subdev0`.
+
 ## Translation Notes
 
 - Add a downstream root compatible with `"qcom,camera_kt"`. The direct
@@ -185,9 +208,10 @@ with `reg` ranges.
 3. Keep `qcom,cam-req-mgr`; it boots, binds sync, and creates `/dev/video0`
    and `/dev/video1` in commit `4b159fe`.
 4. Keep the explicit addressable root bus; it boots in commit `48cdb8e`.
-5. Add CPAS as the first real hardware-probing node after translating its
-   register, clock, power-domain, bus, and client properties.
-6. Add SMMU and CDM after CPAS is healthy, then verify platform device probes.
+5. Keep CPAS with the translated register, clock, power-domain, OPP, AHB ICC,
+   and client properties. It boots and binds in commit `9703bd1`.
+6. Add SMMU and CDM after the proven CPAS checkpoint, then verify platform
+   device probes.
 7. Add CCI, CSIPHY, MCLK/reset/VANA pinctrl, fixed camera regulators, and four
    sensor slots. Verify chip-ID probing with the standalone camera test.
 8. Add ISP/ICP/JPEG/LRME hardware nodes needed by openpilot streaming, leaving
