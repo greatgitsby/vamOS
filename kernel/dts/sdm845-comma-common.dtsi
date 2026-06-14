@@ -512,6 +512,62 @@
 			status = "okay";
 		};
 
+		cam_cpas: cam-cpas@ac40000 {
+			compatible = "qcom,cam-cpas";
+			reg = <0 0x0ac40000 0 0x1000>,
+			      <0 0x0ac42000 0 0x5000>;
+			reg-names = "cam_cpas_top", "cam_camnoc";
+			reg-cam-base = <0x40000 0x42000>;
+			interrupts = <GIC_SPI 459 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "cpas_camnoc";
+			label = "cpas";
+			cell-index = <0>;
+			arch-compat = "cpas_top";
+			qcom,cpas-hw-ver = <0x170110>;
+			camnoc-axi-min-ib-bw = <3000000000>;
+			power-domains = <&clock_camcc TITAN_TOP_GDSC>;
+			clocks = <&gcc GCC_CAMERA_AHB_CLK>,
+				 <&gcc GCC_CAMERA_AXI_CLK>,
+				 <&clock_camcc CAM_CC_SOC_AHB_CLK>,
+				 <&clock_camcc CAM_CC_SLOW_AHB_CLK_SRC>,
+				 <&clock_camcc CAM_CC_CPAS_AHB_CLK>,
+				 <&clock_camcc CAM_CC_CAMNOC_AXI_CLK>;
+			clock-names = "gcc_ahb_clk", "gcc_axi_clk",
+				      "soc_ahb_clk", "slow_ahb_clk_src",
+				      "cpas_ahb_clk", "camnoc_axi_clk";
+			src-clock-name = "slow_ahb_clk_src";
+			clock-rates = <0 0 0 0 0 0>,
+				      <0 0 0 19200000 0 0>,
+				      <0 0 0 80000000 0 0>,
+				      <0 0 0 80000000 0 0>,
+				      <0 0 0 80000000 0 0>,
+				      <0 0 0 80000000 0 0>,
+				      <0 0 0 80000000 0 0>;
+			clock-cntl-level = "suspend", "minsvs", "lowsvs",
+					   "svs", "svs_l1", "nominal",
+					   "turbo";
+			interconnects = <&gladiator_noc MASTER_APPSS_PROC 0
+					 &config_noc SLAVE_CAMERA_CFG 0>;
+			interconnect-names = "cam_ahb";
+			cam-ahb-num-cases = <2>;
+			cam-ahb-bw-KBps = <0 0>, <0 300000>;
+			client-id-based;
+			client-names = "csiphy0", "csiphy1", "csiphy2",
+				       "csiphy3", "cci0", "csid0", "csid1",
+				       "csid2", "ife0", "ife1", "ife2",
+				       "ipe0", "ipe1", "cam-cdm-intf0",
+				       "cpas-cdm0", "bps0", "icp0",
+				       "jpeg-dma0", "jpeg-enc0", "fd0",
+				       "lrmecpas0";
+			status = "okay";
+
+			camera-bus-nodes {
+				cpas_bus_level0: level0 {
+					level-index = <0>;
+				};
+			};
+		};
+
 		cam_req_mgr: cam-req-mgr {
 			compatible = "qcom,cam-req-mgr";
 			status = "okay";
