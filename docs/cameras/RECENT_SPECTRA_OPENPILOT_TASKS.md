@@ -66,17 +66,44 @@ on-device (`larch64`). mici (10.0.0.22) was offline during this work.
 
 ### openpilot — remaining tasks (NOT yet done)
 
-- O2.1 — ABI guard header `spectra_uapi_version.h` with the static_asserts and a
-  version string. This becomes the PRIMARY mismatch guard under the `/usr`-header
-  model (it catches a `/usr` header that does not match the expected layout).
-- O3.1/O3.2 — sysfs video-node discovery helper + wire into `SpectraMaster`.
-- O4.1 — byte-vector packet builder utilities.
-- O4.2/O4.3 — the helper FILES (`spectra_csiphy_config.*`, `spectra_isp_config.*`)
-  are not yet created; only the inline call-site changes are done so far.
-- O4.4 — req-mgr new-field init (`additional_timeout`, `reserved`,
-  `init_timeout[]`) + startup ABI log. NOTE: verify whether these fields are
-  actually present/needed in v1.0.3 before adding; the off-device build currently
-  passes without them.
+- O2.1 — DONE (uncommitted, local). Added
+  `system/camerad/cameras/spectra_uapi_version.h` with all six static_asserts
+  (OPCODE_MAX, SENSOR_PROBE_CMD, and sizeof cam_cmd_i2c_info / i2c_rdwr_header /
+  cam_cmd_unconditional_wait / cam_csiphy_info), a `SPECTRA_UAPI_VERSION` string,
+  and `spectra_uapi_version()`. Included from `spectra.cc`; added a startup ABI
+  banner (`LOGW`) in `SpectraMaster::init`. Verified: asserts pass against
+  v1.0.3, and a negative test confirms they fire on a mismatched layout. This is
+  the PRIMARY mismatch guard under the `/usr`-header model. Commit once the
+  header-sourcing approach is finalized.
+- O3.1/O3.2 — DONE (uncommitted, local). Added
+  `system/camerad/cameras/spectra_device_nodes.{h,cc}` with
+  `open_v4l_video_by_name()` (matches `/sys/class/video4linux/videoN/name`,
+  falls back to the legacy by-path string, logs all discovered video nodes on
+  failure). Wired into `SpectraMaster::init` for `cam-req-mgr` (video0) and
+  `cam_sync` (video1), keeping the old by-path strings as fallbacks. Subdev
+  opens already used name matching via the existing
+  `open_v4l_by_name_and_index` (that helper matches `v4l-subdevN`; the new one
+  matches `videoN`). Compiles clean against v1.0.3.
+- O4.1/O4.4 — packet sizing: DONE the substantive part (uncommitted, local).
+  Found and fixed a real bug: `openSensor()` allocated the sensor probe power
+  buffer with a hardcoded `196` bytes, computed for the OLD AGNOS struct sizes.
+  Under v1.0.3 the same power-command sequence needs 248 bytes, so the old code
+  under-allocated by 52 bytes (heap overflow during probe). Replaced with
+  `kProbePowerBufSize`, a `constexpr` computed from `sizeof` (verified == 248
+  for v1.0.3), plus a `power_block_size()` helper. This is the O4.1 "compute
+  packet sizes from sizeof, don't hardcode" intent applied to the one remaining
+  magic number; the i2c/probe descriptors already used `sizeof`.
+- O4.4 — req-mgr new-field init: NO CODE NEEDED. v1.0.3 does add
+  `cam_req_mgr_sched_request.additional_timeout`/`.reserved` and
+  `cam_req_mgr_link_control.init_timeout[]`, BUT all three call sites already
+  use `= {0}` aggregate init, which zero-initializes every member including the
+  new ones. Adding explicit `.additional_timeout = 0` etc. would be redundant.
+  Startup ABI log: DONE as part of O2.1 (the LOGW banner in `SpectraMaster::init`
+  prints the UAPI version, CAM_COMMON_OPCODE_MAX, and key struct sizes).
+- O4.2/O4.3 — helper FILES (`spectra_csiphy_config.*`, `spectra_isp_config.*`)
+  were NOT created; the inline call-site changes are done and committed (CSIPHY +
+  ISP, commit e8fe170ad). Extracting them into helper files per the original
+  lane split is optional polish, not required for the build to pass.
 
 ### vamOS — not started by this worker
 
