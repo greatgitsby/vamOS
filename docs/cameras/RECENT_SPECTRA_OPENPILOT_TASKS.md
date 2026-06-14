@@ -239,6 +239,13 @@ Parallel from day one:
   `msm_cam_cdm_intf`; req-mgr still binds sync, CPAS, and CDM interface; and
   `/dev/video0`, `/dev/video1`, `/dev/media0`, `/dev/media1`, and
   `/dev/v4l-subdev0` are present.
+- `c908681` added only the openpilot-required Spectra SMMU context banks and
+  booted on mici as `6.18.0-vamos-c908681`. The SMMU parent, `ife`, `icp`,
+  `cpas-cdm0`, `cam-secure`, and ICP firmware child all bind to
+  `msm_cam_smmu`; the existing req-mgr/sync/CPAS/CDM nodes remain present.
+  Known warning: each non-secure SMMU CB logs `iommu_set_fault_handler()` because
+  mainline 6.18 refuses setting a fault handler on DMA-cookie domains. The
+  downstream driver ignores that path and binding continues.
 
 ## 2. Lane P0 - Source Submodule And Audit
 
