@@ -556,12 +556,10 @@
 					   <0 300000>, <0 300000>;
 			client-id-based;
 			client-names = "csiphy0", "csiphy1", "csiphy2",
-				       "csiphy3", "cci0", "csid0", "csid1",
-				       "csid2", "ife0", "ife1", "ife2",
-				       "ipe0", "ipe1", "cam-cdm-intf0",
-				       "cpas-cdm0", "bps0", "icp0",
-				       "jpeg-dma0", "jpeg-enc0", "fd0",
-				       "lrmecpas0";
+				       "cci0", "csid0", "csid1", "csid2",
+				       "ife0", "ife1", "ife2",
+				       "cam-cdm-intf0", "cpas-cdm0",
+				       "bps0", "icp0";
 			status = "okay";
 
 			cam_cpas_opp_table: opp-table {
@@ -588,8 +586,7 @@
 			cell-index = <0>;
 			label = "cam-cdm-intf";
 			num-hw-cdm = <1>;
-			cdm-client-names = "vfe", "jpegdma", "jpegenc",
-					   "fd", "lrmecdm";
+			cdm-client-names = "vfe";
 			status = "okay";
 		};
 
