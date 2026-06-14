@@ -103,11 +103,26 @@ Legacy AGNOS also reduces active MCLK0/1/2 drive strength to 2 mA on mici.
 Mainline SDM845 pinctrl supports the same `cam_mclk` function on GPIO13-16,
 but vamOS does not yet define the camera MCLK/reset/VANA pinctrl states.
 
+## Regression Finding
+
+Commit `5b02808` tested an active `qcom,camera_kt` node directly under `&soc`
+with only `qcom,cam-req-mgr` and `qcom,cam-sync` children. The kernel image
+built and the generated mici DTB contained the nodes, but the device boot-looped
+before Linux printed anything. MDMA `profile-boot` reached ABL `Exit BS`; about
+58 seconds later the boot ROM banner appeared again. Commit `f9ca57e` removed
+that DTS node and restored boot.
+
+Treat the direct active root-under-`&soc` shape as failed. The next root
+experiment should change one variable at a time, preferably root placement or
+an explicit child bus shape before any hardware children are added.
+
 ## Translation Notes
 
-- Add a downstream root under `&soc` compatible with `"qcom,camera_kt"`.
-  Software-only base nodes can be direct children. Hardware nodes with `reg`
-  ranges may need an explicit addressable bus layer when they are added.
+- Add a downstream root compatible with `"qcom,camera_kt"`, but do not repeat
+  the failed minimal active root directly under `&soc` from commit `5b02808`.
+  Verify root placement and parent bus shape on device before adding children.
+  Hardware nodes with `reg` ranges may need an explicit addressable bus layer
+  when they are added.
 - Add `qcom,cam-req-mgr` and `qcom,cam-sync` early. Legacy AGNOS has req-mgr;
   recent `camera_kt` also includes sync.
 - Be careful with sensor nesting. Legacy AGNOS puts sensor slots under `&cam_cci`,
@@ -136,10 +151,12 @@ but vamOS does not yet define the camera MCLK/reset/VANA pinctrl states.
 
 ## Bring-up Order
 
-1. Add root + minimal base nodes and confirm the boot log changes from
-   `No matching device found` to `Spectra camera_kt driver initialized`.
-2. Add SMMU, CPAS, CDM, sync/request-manager, and verify platform device probes.
-3. Add CCI, CSIPHY, MCLK/reset/VANA pinctrl, fixed camera regulators, and four
+1. Find a root placement/bus shape that boots on mici. The failed shape is an
+   active `camera-kt` node directly under `&soc`.
+2. Add only `qcom,cam-req-mgr` and `qcom,cam-sync`, then confirm the boot log
+   changes from `No matching device found` to a controlled probe result.
+3. Add SMMU, CPAS, CDM, sync/request-manager, and verify platform device probes.
+4. Add CCI, CSIPHY, MCLK/reset/VANA pinctrl, fixed camera regulators, and four
    sensor slots. Verify chip-ID probing with the standalone camera test.
-4. Add ISP/ICP/JPEG/LRME hardware nodes needed by openpilot streaming, leaving
+5. Add ISP/ICP/JPEG/LRME hardware nodes needed by openpilot streaming, leaving
    FD/OPE/TFE/SFE/custom out until compiled and proven needed.
