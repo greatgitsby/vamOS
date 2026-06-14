@@ -290,6 +290,13 @@ Parallel from day one:
   boot checkpoint keeps `qcom,bps` in the graph but omits its mainline
   `BPS_GDSC` `power-domains` attachment. BPS runtime power is now an explicit
   follow-up after the kernel boots with the minimal ISP/ICP graph.
+- The `9275abf` checkpoint passes that BPS attach point: `qcom,bps` probes and
+  `camera_init` returns. The next failure is deferred component binding:
+  CSID/VFE resource init calls `devm_pm_opp_of_add_table()` through
+  `cam_soc_util_configure_opp()` and fails with `-ENODEV` because those nodes do
+  not yet have `operating-points-v2`. The staged fix adds OPP tables for CSID,
+  VFE, A5, and BPS using the existing source-clock frequencies from
+  `clock-rates`.
 
 ## 2. Lane P0 - Source Submodule And Audit
 

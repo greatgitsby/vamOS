@@ -227,6 +227,16 @@ boots with the minimal ISP/ICP device graph. Validate this checkpoint with a
 kernel build, flash, 30-second serial `uname -a`, and a 30-second serial boot
 capture before adding CCI, CSIPHY, or sensor nodes.
 
+The next serial checkpoint for `9275abf` passes the BPS attach point: `qcom,bps`
+probes successfully and `camera_init` returns. Deferred component binding then
+exposes the next recent-driver contract. CSID and VFE components call
+`cam_soc_util_configure_opp()`, which unconditionally calls
+`devm_pm_opp_of_add_table()`. Without `operating-points-v2` on the hardware
+nodes, CSID/VFE SOC resource setup fails with `-ENODEV`; component rollback then
+hits a null `cam_ife_csid_component_unbind()` path. The staged DT now adds
+shared OPP tables for CSID and VFE, plus A5/BPS OPP tables, using the same source
+clock frequencies already present in each node's `clock-rates`.
+
 ## Translation Notes
 
 - Add a downstream root compatible with `"qcom,camera_kt"`. The direct

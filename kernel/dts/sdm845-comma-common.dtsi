@@ -773,8 +773,21 @@
 				      <0 0 0 0 0 0 538000000 0 0 0 600000000 0 0>;
 			clock-cntl-level = "svs", "turbo";
 			src-clock-name = "ife_csid_clk_src";
+			operating-points-v2 = <&cam_csid_opp_table>;
 			clock-control-debugfs = "true";
 			status = "okay";
+
+			cam_csid_opp_table: opp-table {
+				compatible = "operating-points-v2";
+
+				opp-384000000 {
+					opp-hz = /bits/ 64 <384000000>;
+				};
+
+				opp-538000000 {
+					opp-hz = /bits/ 64 <538000000>;
+				};
+			};
 		};
 
 		cam_vfe0: vfe0@acaf000 {
@@ -810,11 +823,28 @@
 				      <0 0 0 0 0 0 600000000 0 0>;
 			clock-cntl-level = "svs", "svs_l1", "turbo";
 			src-clock-name = "ife_clk_src";
+			operating-points-v2 = <&cam_vfe_opp_table>;
 			clock-control-debugfs = "true";
 			clock-names-option = "ife_dsp_clk";
 			clocks-option = <&clock_camcc CAM_CC_IFE_0_DSP_CLK>;
 			clock-rates-option = <600000000>;
 			status = "okay";
+
+			cam_vfe_opp_table: opp-table {
+				compatible = "operating-points-v2";
+
+				opp-404000000 {
+					opp-hz = /bits/ 64 <404000000>;
+				};
+
+				opp-480000000 {
+					opp-hz = /bits/ 64 <480000000>;
+				};
+
+				opp-600000000 {
+					opp-hz = /bits/ 64 <600000000>;
+				};
+			};
 		};
 
 		cam_csid1: csid1@acba000 {
@@ -857,6 +887,7 @@
 				      <0 0 0 0 0 0 538000000 0 0 0 600000000 0 0>;
 			clock-cntl-level = "svs", "turbo";
 			src-clock-name = "ife_csid_clk_src";
+			operating-points-v2 = <&cam_csid_opp_table>;
 			clock-control-debugfs = "true";
 			status = "okay";
 		};
@@ -894,6 +925,7 @@
 				      <0 0 0 0 0 0 600000000 0 0>;
 			clock-cntl-level = "svs", "svs_l1", "turbo";
 			src-clock-name = "ife_clk_src";
+			operating-points-v2 = <&cam_vfe_opp_table>;
 			clock-control-debugfs = "true";
 			clock-names-option = "ife_dsp_clk";
 			clocks-option = <&clock_camcc CAM_CC_IFE_1_DSP_CLK>;
@@ -939,6 +971,7 @@
 				      <0 0 0 0 0 0 538000000 0 0 0 600000000 0>;
 			clock-cntl-level = "svs", "turbo";
 			src-clock-name = "ife_csid_clk_src";
+			operating-points-v2 = <&cam_csid_opp_table>;
 			clock-control-debugfs = "true";
 			status = "okay";
 		};
@@ -974,6 +1007,7 @@
 				      <0 0 0 0 0 0 600000000 0>;
 			clock-cntl-level = "svs", "svs_l1", "turbo";
 			src-clock-name = "ife_clk_src";
+			operating-points-v2 = <&cam_vfe_opp_table>;
 			clock-control-debugfs = "true";
 			status = "okay";
 		};
@@ -1017,9 +1051,23 @@
 			clock-rates = <0 0 200000000 0 0 0 0 400000000>,
 				      <0 0 200000000 0 0 0 0 600000000>;
 			clock-cntl-level = "svs", "turbo";
+			src-clock-name = "icp_clk_src";
+			operating-points-v2 = <&cam_a5_opp_table>;
 			fw_name = "CAMERA_ICP.elf";
 			ubwc-cfg = <0x7b 0x1ef>;
 			status = "okay";
+
+			cam_a5_opp_table: opp-table {
+				compatible = "operating-points-v2";
+
+				opp-400000000 {
+					opp-hz = /bits/ 64 <400000000>;
+				};
+
+				opp-600000000 {
+					opp-hz = /bits/ 64 <600000000>;
+				};
+			};
 		};
 
 		cam_bps: qcom,bps {
@@ -1044,8 +1092,25 @@
 				      <0 0 0 0 600000000>;
 			clock-cntl-level = "svs", "svs_l1", "nominal", "turbo";
 			src-clock-name = "bps_clk_src";
+			operating-points-v2 = <&cam_bps_opp_table>;
 			clock-control-debugfs = "true";
 			status = "okay";
+
+			cam_bps_opp_table: opp-table {
+				compatible = "operating-points-v2";
+
+				opp-404000000 {
+					opp-hz = /bits/ 64 <404000000>;
+				};
+
+				opp-480000000 {
+					opp-hz = /bits/ 64 <480000000>;
+				};
+
+				opp-600000000 {
+					opp-hz = /bits/ 64 <600000000>;
+				};
+			};
 		};
 
 		cam_req_mgr: cam-req-mgr {
