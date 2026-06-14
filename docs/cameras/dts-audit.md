@@ -245,6 +245,9 @@ nodes, wires them into `qcom,cam-icp`, and gives them a shared OPP table. Like
 BPS, these IPE nodes deliberately omit mainline `IPE_0_GDSC`/`IPE_1_GDSC`
 `power-domains` for this boot checkpoint because those CAMCC GDSCs are `HW_CTRL |
 POLL_CFG_GDSCR` in mainline and need a separate runtime-power investigation.
+CPAS also needs `ipe0` and `ipe1` in `client-names`, because the IPE driver
+registers with identifier `"ipe"` and the CPAS client-id path expands that to
+`ipe<cell-index>`.
 
 ## Translation Notes
 

@@ -304,6 +304,9 @@ Parallel from day one:
   `qcom,ipe1` with clocks/OPPs and wires them into `qcom,cam-icp`; their
   mainline IPE GDSCs stay unattached for this checkpoint, matching the BPS GDSC
   staging rule.
+- The `6e7e83f` checkpoint boots and probes IPE0/IPE1, then CPAS rejects IPE0
+  registration because `client-names` lacked `ipe0`/`ipe1`. The next staged DT
+  adds only those CPAS client names; the legacy AGNOS list uses the same names.
 
 ## 2. Lane P0 - Source Submodule And Audit
 
