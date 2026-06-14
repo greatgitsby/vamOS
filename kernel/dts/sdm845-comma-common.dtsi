@@ -722,8 +722,8 @@
 				      "cam_cc_camnoc_axi_clk";
 			clock-rates = <0 0 0 0 0>;
 			clock-cntl-level = "svs";
-			cdm-client-names = "ife";
-			status = "okay";
+			cdm-client-names = "ife", "ife3";
+			status = "disabled";
 		};
 
 		cam_req_mgr: cam-req-mgr {
