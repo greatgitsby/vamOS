@@ -177,6 +177,13 @@ interface bound as `ac00000.camera-kt:cam-cdm-intf -> msm_cam_cdm_intf`, req-mgr
 bound sync, CPAS, and CDM interface, and the same req-mgr/sync/CPAS user nodes
 remained present.
 
+Commit `c908681` added the openpilot-required SMMU children only: `ife`, `icp`,
+`cpas-cdm0`, `cam-secure`, and the ICP firmware device backed by `camera_mem`.
+It booted on mici as `6.18.0-vamos-c908681`; all SMMU nodes bound to
+`msm_cam_smmu`, and req-mgr/sync/CPAS/CDM stayed present. The boot log warns in
+`iommu_set_fault_handler()` for each non-secure CB because mainline 6.18 rejects
+fault handlers on DMA-cookie domains; binding continues.
+
 ## Translation Notes
 
 - Add a downstream root compatible with `"qcom,camera_kt"`. The direct
