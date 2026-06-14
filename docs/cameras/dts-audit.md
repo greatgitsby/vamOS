@@ -192,6 +192,19 @@ Linux earlycon output. Commit `818c807` reverts only that CPAS CDM increment and
 boots on mici as `6.18.0-vamos-818c807`. Treat the `a26a734` shape as rejected;
 the next CPAS CDM attempt needs smaller boot-verified slices.
 
+The smaller CPAS CDM slices show the safe boundary. Commit `f2fc7a2` adds only
+the SMMU alias `cam-smmu-label = "cpas-cdm0", "cpas-cdm"` and boots as
+`6.18.0-vamos-f2fc7a2`. Commit `3655f26` adds the full `qcom,cam170-cpas-cdm0`
+node with `status = "disabled"` and boots as `6.18.0-vamos-3655f26`; diagnostics
+show no hardware CDM bind and the existing req-mgr/sync/CPAS/virtual-CDM/SMMU
+nodes remain present. Commit `70e1533` enables that same node with only the
+legacy AGNOS `"ife"` CDM client and still fails before a shell comes up; a
+10-second profile reaches ABL `Exit BS` / `UEFI End` at about 4.56s with no
+Linux output. Commit `dde427c` reverts the enablement and boots as
+`6.18.0-vamos-dde427c`. Therefore the failure is in the enabled CPAS CDM
+probe/power/reset path, not the SMMU alias, disabled node shape, or added
+`ife3` client name.
+
 ## Translation Notes
 
 - Add a downstream root compatible with `"qcom,camera_kt"`. The direct
@@ -242,10 +255,10 @@ the next CPAS CDM attempt needs smaller boot-verified slices.
    name, then verify the existing req-mgr/sync/CPAS nodes still boot.
 7. Add SMMU context banks required by openpilot (`ife`, `icp`, `cpas-cdm0`, and
    `cam-secure`), then verify platform device probes.
-8. Reintroduce real CPAS CDM in smaller checkpoints. Start with the SMMU label
-   alias and/or a disabled/minimal `qcom,cam170-cpas-cdm0` node, then enable
-   only the `ife`/`ife3` client names after each boot is proven. Do not re-add
-   the failed `a26a734` node shape wholesale.
+8. Keep the SMMU alias and disabled `qcom,cam170-cpas-cdm0` node. Do not enable
+   CPAS CDM again until the enabled probe path is fixed or instrumented; even the
+   legacy `"ife"`-only client list fails in `70e1533`. After the enabled probe is
+   boot-safe, add the recent openpilot-needed `ife3` client as its own checkpoint.
 9. Add ISP/ICP/BPS hardware nodes needed by openpilot streaming. Leave JPEG,
    LRME, IPE, FD, OPE, TFE, SFE, and custom blocks out.
 10. Add CCI, CSIPHY0-2, MCLK/reset/VANA pinctrl, fixed camera regulators, and
