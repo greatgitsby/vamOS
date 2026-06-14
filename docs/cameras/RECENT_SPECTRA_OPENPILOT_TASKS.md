@@ -6,6 +6,85 @@ This task plan is written for parallel Codex workers. Each task has an owner
 lane, repo, dependencies, files, acceptance checks, and conflict notes. Start
 from clean branches named `spectra-uapi-migration-plan` in both repos.
 
+## 0a. Progress Log (read this first)
+
+Last updated: 2026-06-14.
+
+### openpilot — done and pushed
+
+Committed on `origin/spectra-uapi-migration-plan` (commit `e8fe170ad`,
+"camerad: migrate Spectra call sites to recent camera_kt UAPI"). This is the
+real source migration of the changed Spectra call sites to the v1.0.3
+`camera_kt` UAPI layout:
+
+- CSIPHY (`spectra.cc configCSIPHY`): `cam_csiphy_info` dropped
+  `lane_mask`/`csiphy_3phase`/`combo_mode`; now sets `reserved=0`,
+  `mipi_flags=0` (DPHY, no combo). Covers task O4.2's call-site change.
+- ISP (`spectra.cc configISP`): removed `.custom_csid`, absent from recent v0
+  `cam_isp_in_port_info`. Covers task O4.3's call-site change.
+- `camera_qcom2.cc`: `frame_id`/`request_id` are now `__u64`; `%lu` -> `%llu`.
+- Sensors (`os04c10.cc`, `ox03c10.cc`): removed stale
+  `<media/msm_camsensor_sdk.h>` include (deleted upstream by "use linux headers
+  from /usr", PR #37993; absent from `camera_kt` UAPI). The `CSI_RAW10`/
+  `CSI_RAW12` MIPI data-type codes it transitively provided are now defined in
+  `sensor.h` (standard MIPI values, openpilot-owned).
+
+### openpilot — TEMP local scaffolding, intentionally NOT committed
+
+These exist only in the local working tree to allow off-device build
+verification. Do NOT commit them. Re-create as needed; remove before any real
+PR.
+
+- `third_party/qcom_spectra_uapi/camera_kt_v1_0_3/` — vendored v1.0.3 UAPI
+  headers + MANIFEST (task O1.1's output). DECISION (2026-06-14, user): the real
+  plan sources headers from `/usr` on the device (installed by the vamOS kernel
+  build, lane K1.2), NOT from a vendored openpilot tree. So O1.1/O1.2 as
+  originally written are superseded. The vendored copy is kept locally only as
+  an off-device compile crutch and source-of-record.
+- `system/camerad/SConscript` — temp edits: force `clang` on x86_64 (match the
+  device compiler), a `Configure`-based UAPI auto-detect that prepends the
+  vendored path when the system headers are not the recent `camera_kt` UAPI
+  (probed via `CAM_QUERY_CAP_V2`), and gating `env.Program('camerad')` to
+  `larch64` so off-device builds compile objects only (no link).
+- `SConstruct` — temp: also run `system/camerad/SConscript` on `x86_64`
+  (normally `larch64`-only) so camerad objects compile off-device.
+
+How to re-verify off-device after re-creating the above:
+
+```bash
+cd /home/trey/claudes/openpilot && source .venv/bin/activate
+scons -j$(nproc) system/camerad/cameras/spectra.o \
+  system/camerad/cameras/camera_qcom2.o system/camerad/cameras/camera_common.o \
+  system/camerad/cameras/cdm.o system/camerad/sensors/ox03c10.o \
+  system/camerad/sensors/os04c10.o
+# Expect: "scons: done building targets." with 0 errors.
+```
+
+As of this writing all six camerad objects compile clean against v1.0.3.
+This verifies compilation only; the full `camerad` link + run must happen
+on-device (`larch64`). mici (10.0.0.22) was offline during this work.
+
+### openpilot — remaining tasks (NOT yet done)
+
+- O2.1 — ABI guard header `spectra_uapi_version.h` with the static_asserts and a
+  version string. This becomes the PRIMARY mismatch guard under the `/usr`-header
+  model (it catches a `/usr` header that does not match the expected layout).
+- O3.1/O3.2 — sysfs video-node discovery helper + wire into `SpectraMaster`.
+- O4.1 — byte-vector packet builder utilities.
+- O4.2/O4.3 — the helper FILES (`spectra_csiphy_config.*`, `spectra_isp_config.*`)
+  are not yet created; only the inline call-site changes are done so far.
+- O4.4 — req-mgr new-field init (`additional_timeout`, `reserved`,
+  `init_timeout[]`) + startup ABI log. NOTE: verify whether these fields are
+  actually present/needed in v1.0.3 before adding; the off-device build currently
+  passes without them.
+
+### vamOS — not started by this worker
+
+P0/K/V lanes (submodule pin exists; kernel import/build/DTS/validation pending).
+The `/usr` header decision means lane K1.2 (install UAPI into the kernel build,
+shipping to `/usr/include/media`) is the authoritative header source for
+openpilot — keep it aligned with the same v1.0.3 commit.
+
 ## 0. Ground Rules
 
 - Do not import old branch docs, old proof bundles, or old AGNOS-port WIP.
