@@ -231,18 +231,15 @@ legacy `/dev/v4l/by-path` strings.
 ## 9. openpilot UAPI Migration
 
 openpilot currently includes Qualcomm Spectra headers as `<media/cam_*.h>` from
-the system or build environment. That is unsafe with a new driver because the
-recent Qualcomm UAPI changed opcodes and struct layouts.
+the system or build environment. That is unsafe unless the device image installs
+the recent Qualcomm UAPI from the same pinned `camera-driver` submodule used by
+the kernel build.
 
-Add a vendored UAPI tree in openpilot, for example:
-
-```text
-third_party/qcom_spectra_uapi/camera_kt_v1_0_3/media/cam_*.h
-third_party/qcom_spectra_uapi/camera_kt_v1_0_3/MANIFEST
-```
-
-Then update `system/camerad/SConscript` or the relevant openpilot build config so
-camerad includes this directory before system headers.
+The production path is device-installed system headers from vamOS, not a
+committed vendored openpilot header tree. Do not add an openpilot UAPI MANIFEST
+or README; the explicit vamOS submodule checkout is the provenance record. A
+local header-only `third_party/qcom_spectra_uapi/camera_kt_v1_0_3/media/`
+fallback may be used for off-device compile checks, but it stays uncommitted.
 
 Add a small version/guard header:
 

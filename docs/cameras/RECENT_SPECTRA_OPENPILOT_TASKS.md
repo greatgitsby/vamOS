@@ -35,12 +35,12 @@ These exist only in the local working tree to allow off-device build
 verification. Do NOT commit them. Re-create as needed; remove before any real
 PR.
 
-- `third_party/qcom_spectra_uapi/camera_kt_v1_0_3/` — vendored v1.0.3 UAPI
-  headers + MANIFEST (task O1.1's output). DECISION (2026-06-14, user): the real
-  plan sources headers from `/usr` on the device (installed by the vamOS kernel
-  build, lane K1.2), NOT from a vendored openpilot tree. So O1.1/O1.2 as
-  originally written are superseded. The vendored copy is kept locally only as
-  an off-device compile crutch and source-of-record.
+- `third_party/qcom_spectra_uapi/camera_kt_v1_0_3/` — uncommitted v1.0.3 UAPI
+  headers only, with no MANIFEST or README. DECISION (2026-06-14, user): the
+  real plan sources headers from `/usr` on the device (installed by the vamOS
+  kernel build, lane K1.2), NOT from a vendored openpilot tree. So O1.1/O1.2 as
+  originally written are superseded. The local copy is only an off-device
+  compile crutch; the source of truth is the explicit vamOS submodule checkout.
 - `system/camerad/SConscript` — temp edits: force `clang` on x86_64 (match the
   device compiler), a `Configure`-based UAPI auto-detect that prepends the
   vendored path when the system headers are not the recent `camera_kt` UAPI
@@ -246,6 +246,14 @@ Parallel from day one:
   Known warning: each non-secure SMMU CB logs `iommu_set_fault_handler()` because
   mainline 6.18 refuses setting a fault handler on DMA-cookie domains. The
   downstream driver ignores that path and binding continues.
+- `a26a734` attempted the first real CPAS CDM hardware node
+  (`qcom,cam170-cpas-cdm0`) with only the openpilot-needed `ife`/`ife3` CDM
+  clients plus an SMMU alias for `cpas-cdm`. It built and flashed, but did not
+  boot: a 10-second MDMA `profile-boot` reached ABL `Exit BS` / `UEFI End` at
+  about 4.55s and printed no Linux earlycon output. `818c807` reverts only that
+  CPAS CDM increment and boots on mici as `6.18.0-vamos-818c807`. Do not re-add
+  the `a26a734` CPAS CDM shape wholesale; reintroduce it as smaller
+  boot-verified slices.
 
 ## 2. Lane P0 - Source Submodule And Audit
 
@@ -570,6 +578,10 @@ Work:
 - Add only the `camera_kt` node families consumed by the current openpilot
   branch: cam-req-mgr, cam-sync, SMMU, CPAS, CDM interface/CPAS CDM, CCI,
   CSIPHY0-2, CSID0-2, VFE/IFE0-2, ICP/A5/BPS, and three sensor slots.
+- Real CPAS CDM is not accepted yet. Commit `a26a734` added a
+  `cpas-cdm0@ac48000` node with `ife`/`ife3` clients and caused a pre-Linux boot
+  stall; commit `818c807` reverted it and restored boot. Next CPAS CDM work
+  must split the change into narrower checkpoints.
 - Do not add JPEG, LRME, FD, OPE, TFE, SFE, custom, IPE, or fourth-camera nodes
   unless openpilot starts consuming them.
 - Keep upstream mainline `camss` and `cci` disabled to avoid register overlap.
@@ -596,7 +608,7 @@ Conflict notes: KDTS owns DTS files.
 
 ## 6. Lane OUAPI - openpilot UAPI Header Source
 
-### Task O1.1 - Vendor recent Spectra UAPI headers
+### Task O1.1 - Use device-installed recent Spectra UAPI headers
 
 Repo: openpilot
 
@@ -604,29 +616,36 @@ Dependencies: P0.1
 
 Files:
 
-- `third_party/qcom_spectra_uapi/camera_kt_v1_0_3/media/cam_*.h`
-- `third_party/qcom_spectra_uapi/camera_kt_v1_0_3/MANIFEST`
+- `system/camerad/cameras/spectra_uapi_version.h`
+- no committed `third_party/qcom_spectra_uapi` files
 
 Work:
 
-- Copy `camera_kt/include/uapi/camera/media/cam_*.h` from the verified
-  Qualcomm source submodule at
-  `/home/trey/claudes/vamOS/kernel/spectra-qcom/camera-driver/`.
-- Store them under a path that exposes includes as `<media/cam_*.h>`.
-- Add a manifest with upstream commit and import date.
+- Use the recent `<media/cam_*.h>` headers installed on the device by the vamOS
+  kernel build from the pinned Qualcomm `camera-driver` submodule.
+- Keep the explicit source checkout in vamOS as the provenance record; do not
+  add an openpilot UAPI MANIFEST or README.
+- Keep any local `third_party/qcom_spectra_uapi/camera_kt_v1_0_3/media/`
+  fallback uncommitted and header-only. It is only for off-device object-build
+  checks when the host `/usr/include/media` headers are stale.
+- Guard the camerad build with compile-time ABI checks in
+  `spectra_uapi_version.h`.
 
 Acceptance:
 
 ```bash
-test -f /home/trey/claudes/openpilot/third_party/qcom_spectra_uapi/camera_kt_v1_0_3/media/cam_defs.h
-rg -n "CAM_QUERY_CAP_V2|CAM_COMMON_OPCODE_MAX" \
-  /home/trey/claudes/openpilot/third_party/qcom_spectra_uapi/camera_kt_v1_0_3/media/cam_defs.h
+cd /home/trey/claudes/openpilot
+rg -n "CAM_QUERY_CAP_V2|SPECTRA_UAPI_VERSION" system/camerad/cameras/spectra_uapi_version.h
+test -z "$(git ls-files third_party/qcom_spectra_uapi)"
+test ! -e third_party/qcom_spectra_uapi/camera_kt_v1_0_3/MANIFEST
+test ! -e third_party/qcom_spectra_uapi/camera_kt_v1_0_3/README.md
 git -C /home/trey/claudes/openpilot status --short
 ```
 
-Conflict notes: OUAPI owns this third-party UAPI directory.
+Conflict notes: OUAPI owns the userspace ABI guard. The vamOS submodule is the
+source provenance; no openpilot manifest/readme is needed.
 
-### Task O1.2 - Put vendored UAPI first in camerad include path
+### Task O1.2 - Keep camerad include path compatible with device headers
 
 Repo: openpilot
 
@@ -639,14 +658,16 @@ Files:
 
 Work:
 
-- Add the vendored UAPI include root before system include paths for camerad.
+- On device, rely on the system recent Spectra UAPI headers installed by vamOS.
+- If an off-device fallback include path is used for local compile checks, keep
+  it uncommitted and gated so it does not become the production source path.
 - Do not globally change unrelated openpilot build targets unless required.
 
 Acceptance:
 
 ```bash
 cd /home/trey/claudes/openpilot
-rg -n "qcom_spectra_uapi|camera_kt_v1_0_3" system/camerad/SConscript
+git diff -- system/camerad/SConscript
 scons -n system/camerad 2>/tmp/openpilot-camerad-dryrun.log || true
 git status --short
 ```
@@ -1012,9 +1033,10 @@ Gate A - Planning landed
 Gate B - Source pinned
 
 - P0.1 and K1.1 complete.
-- O1.1 complete.
-- The vamOS submodule gitlink and openpilot UAPI manifest name the same
-  Qualcomm commit.
+- K1.2 copies the same submodule UAPI headers into the kernel UAPI include tree.
+- O1.1 guard checks compile against the recent `camera_kt` UAPI.
+- No openpilot UAPI manifest or README is required; the explicit vamOS submodule
+  checkout is the source provenance.
 
 Gate C - Buildable kernel
 
