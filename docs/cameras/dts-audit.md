@@ -130,6 +130,11 @@ That image also booted on mici. Sysfs showed
 appeared, which matches the driver: sync registers a component and waits for
 req-mgr to become the component master.
 
+Commit `4b159fe` added `qcom,cam-req-mgr` under the same root+sync shape. That
+image booted on mici, req-mgr bound sync, and userspace nodes appeared:
+`/dev/video0` named `cam-req-mgr`, `/dev/video1` named `cam_sync`, plus
+`/dev/media0` and `/dev/media1`.
+
 ## Translation Notes
 
 - Add a downstream root compatible with `"qcom,camera_kt"`. The direct
@@ -171,9 +176,9 @@ req-mgr to become the component master.
 2. Keep `qcom,cam-sync`; it boots and binds in commit `12b6ff1`. No video node
    is expected yet because sync only registers a component until req-mgr becomes
    the master.
-3. Add `qcom,cam-req-mgr` after sync is isolated, then verify boot plus
-   `/dev/video*` creation.
-4. Add SMMU, CPAS, CDM, sync/request-manager, and verify platform device probes.
+3. Keep `qcom,cam-req-mgr`; it boots, binds sync, and creates `/dev/video0`
+   and `/dev/video1` in commit `4b159fe`.
+4. Add SMMU, CPAS, and CDM, then verify platform device probes.
 5. Add CCI, CSIPHY, MCLK/reset/VANA pinctrl, fixed camera regulators, and four
    sensor slots. Verify chip-ID probing with the standalone camera test.
 6. Add ISP/ICP/JPEG/LRME hardware nodes needed by openpilot streaming, leaving
