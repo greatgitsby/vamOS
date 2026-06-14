@@ -205,9 +205,12 @@ Parallel from day one:
   mici. `uname -a` reports `6.18.0-vamos-12b6ff1`; sysfs shows
   `ac00000.camera-kt:cam-sync` bound to `cam_sync`. No video/media nodes appear
   yet because req-mgr is not present.
+- A req-mgr child increment was tested in commit `4b159fe` and boots on mici.
+  Req-mgr binds sync, `/dev/video0` is `cam-req-mgr`, `/dev/video1` is
+  `cam_sync`, and `/dev/media0`/`/dev/media1` are present.
 - K3.1 fresh DT audit is recorded in `docs/cameras/dts-audit.md`.
-- K3.2 is now in progress. The next attempt should add `qcom,cam-req-mgr`
-  under the proven root+sync shape.
+- K3.2 is now in progress. The next attempt should add SMMU/CPAS/CDM plumbing
+  incrementally under the proven root+sync+req-mgr shape.
 
 ## 2. Lane P0 - Source Submodule And Audit
 
