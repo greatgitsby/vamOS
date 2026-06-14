@@ -277,6 +277,12 @@ Parallel from day one:
   enable/disable pulse via `qcom,skip-probe-power-domain-cycle`. Runtime power
   enablement is unchanged; this is a boot isolation guard for the hardware-node
   bind path.
+- While this checkpoint is boot-stall-prone, `tools/build/build_kernel.sh` uses
+  the actual mainline Qualcomm GENI earlycon name
+  `earlycon=qcom_geni,0x00a84000,115200n8` plus `keep_bootcon`,
+  `ignore_loglevel`, `loglevel=8`, and `initcall_debug`. This is deliberate
+  diagnostic noise for MDMA `profile-boot`; remove or quiet it after the DTS
+  hardware-node gate is stable.
 
 ## 2. Lane P0 - Source Submodule And Audit
 
