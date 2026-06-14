@@ -61,6 +61,19 @@ Parallel from day one:
 - O3 and O4 can run in parallel after O1/O2 define the UAPI include path.
 - Validation workers can build scripts independently while K/O lanes progress.
 
+## Current Status - 2026-06-14
+
+- K1.2 and K1.3 are implemented in vamOS using the pinned Qualcomm
+  `camera-driver` submodule and Qualcomm's own `camera-driver/Kbuild`.
+- `./vamos build kernel` completes with `CONFIG_SPECTRA_CAMERA=y`; the build log
+  shows `drivers/media/platform/msm/camera/built-in.a` linked into the kernel.
+- Latest local build artifact: `/home/trey/claudes/vamOS/build/boot.img`.
+- Latest build log: `/tmp/spectra-qcom-build-kbuild.log`.
+- Next kernel validation step is booting this image and checking node/probe
+  behavior with the standalone camera test flow.
+- DTS work remains a fresh-audit task. Do not import the old branch's device
+  tree changes.
+
 ## 2. Lane P0 - Source Submodule And Audit
 
 ### Task P0.1 - Pin Qualcomm source snapshot submodule
@@ -124,7 +137,11 @@ Work:
   carry porting deltas as local patches, build glue, or files under
   `kernel/spectra-qcom/compat/`.
 - Use this source path contract in build glue:
-  `kernel/spectra-qcom/camera-driver/camera_kt/`.
+  `kernel/spectra-qcom/camera-driver/`.
+- Reuse Qualcomm's top-level `camera-driver/Kbuild` and
+  `config/qcm6490-camera.mk` as the object-list/include-path contract. Do not
+  create a parallel vamOS-maintained source list unless the vendor Kbuild stops
+  being usable.
 
 Acceptance:
 
@@ -151,10 +168,14 @@ Files:
 Work:
 
 - Add `install_spectra_qcom()` after patch application and before kernel build.
-- Copy driver source from
-  `kernel/spectra-qcom/camera-driver/camera_kt/drivers` into
-  `kernel/linux/drivers/media/platform/msm/camera/` or the chosen msm camera
-  path.
+- Copy the vendor build unit from `kernel/spectra-qcom/camera-driver/` into
+  `kernel/linux/drivers/media/platform/msm/camera/`:
+  - `Kbuild`
+  - `config/`
+  - `common/`
+  - `camera_kt/`
+- Generate the small `cam_generated_h` header that Qualcomm's standalone
+  `Makefile` normally creates before invoking Kbuild.
 - Copy UAPI headers from
   `kernel/spectra-qcom/camera-driver/camera_kt/include/uapi/camera/media`
   into `kernel/linux/include/uapi/media/cam_*.h`.
@@ -182,22 +203,30 @@ Dependencies: K1.2
 
 Files:
 
-- `kernel/patches/NNNN-spectra-qcom-link.patch`
+- `kernel/patches/0012-media-platform-add-msm-camera-hook.patch`
+- `kernel/spectra-qcom/patches/0001-integrate-camera-driver-kbuild.patch`
 - `kernel/configs/vamos.config`
 
 Work:
 
 - Add the smallest possible patch to include the copied msm camera directory in
   mainline media platform build.
-- Add or enable the config symbol used by the Qualcomm camera tree.
+- Add a local patch on the copied vendor tree that:
+  - defaults `CAMERA_ARCH` to `qcm6490`
+  - points `CAMERA_KERNEL_ROOT` at the copied in-tree location
+  - builds the vendor composite object through `CONFIG_SPECTRA_CAMERA`
+  - keeps the qcm6490 vendor feature selection in
+    `config/qcm6490-camera.mk`
+- Add or enable `CONFIG_SPECTRA_CAMERA`.
 - Enable required media dependencies.
 - Avoid broad config churn.
+- Do not import or rely on old branch device tree changes.
 
 Acceptance:
 
 ```bash
 cd /home/trey/claudes/vamOS
-git -C kernel/linux apply --check ../patches/NNNN-spectra-qcom-link.patch
+git -C kernel/linux apply --check ../patches/0012-media-platform-add-msm-camera-hook.patch
 rg -n "SPECTRA|CAMERA|MEDIA|VIDEO_DEV" kernel/configs/vamos.config
 git status --short
 ```
@@ -219,9 +248,9 @@ Files:
 
 Work:
 
-- Run a kernel build until it fails in the recent Spectra tree.
-- Capture the first complete compile surface.
-- Categorize errors by subsystem:
+- Run a kernel build with `CONFIG_SPECTRA_CAMERA=y`.
+- If it fails in the recent Spectra tree, capture the first complete compile
+  surface and categorize errors by subsystem:
   - kbuild/include path
   - V4L2/media
   - DMA/IOMMU
@@ -229,6 +258,7 @@ Work:
   - SCM/socinfo/Qualcomm private helpers
   - clocks/regulators/pinctrl
   - timers/debugfs/misc Linux API drift
+- If it succeeds, record the build artifact and move to boot/node validation.
 
 Acceptance:
 

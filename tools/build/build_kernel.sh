@@ -8,9 +8,9 @@ TOOLS="$DIR/tools/bin"
 KERNEL_DIR="$DIR/kernel/linux"
 PATCHES_DIR="$DIR/kernel/patches"
 SPECTRA_QCOM_DIR="$DIR/kernel/spectra-qcom"
-SPECTRA_QCOM_SOURCE="$SPECTRA_QCOM_DIR/camera-driver/camera_kt"
-SPECTRA_QCOM_DRIVER_SRC="$SPECTRA_QCOM_SOURCE/drivers"
-SPECTRA_QCOM_UAPI_SRC="$SPECTRA_QCOM_SOURCE/include/uapi/camera/media"
+SPECTRA_QCOM_SOURCE="$SPECTRA_QCOM_DIR/camera-driver"
+SPECTRA_QCOM_DRIVER_SRC="$SPECTRA_QCOM_SOURCE/camera_kt/drivers"
+SPECTRA_QCOM_UAPI_SRC="$SPECTRA_QCOM_SOURCE/camera_kt/include/uapi/camera/media"
 SPECTRA_QCOM_PATCHES_DIR="$SPECTRA_QCOM_DIR/patches"
 SPECTRA_QCOM_DRIVER_DST="$KERNEL_DIR/drivers/media/platform/msm/camera"
 SPECTRA_QCOM_UAPI_DST="$KERNEL_DIR/include/uapi/media"
@@ -151,7 +151,11 @@ clean_spectra_qcom_install() {
 install_spectra_qcom() {
   echo "-- Installing Qualcomm Spectra source --"
 
-  if [ ! -d "$SPECTRA_QCOM_DRIVER_SRC" ] || [ ! -d "$SPECTRA_QCOM_UAPI_SRC" ]; then
+  if [ ! -f "$SPECTRA_QCOM_SOURCE/Kbuild" ] ||
+     [ ! -d "$SPECTRA_QCOM_SOURCE/config" ] ||
+     [ ! -d "$SPECTRA_QCOM_SOURCE/common" ] ||
+     [ ! -d "$SPECTRA_QCOM_DRIVER_SRC" ] ||
+     [ ! -d "$SPECTRA_QCOM_UAPI_SRC" ]; then
     echo "Missing Qualcomm Spectra source. Run './vamos setup' to initialize submodules." >&2
     exit 1
   fi
@@ -159,8 +163,17 @@ install_spectra_qcom() {
   clean_spectra_qcom_install
 
   mkdir -p "$(dirname "$SPECTRA_QCOM_DRIVER_DST")" "$SPECTRA_QCOM_UAPI_DST"
-  cp -a "$SPECTRA_QCOM_DRIVER_SRC" "$SPECTRA_QCOM_DRIVER_DST"
+  mkdir -p "$SPECTRA_QCOM_DRIVER_DST"
+  cp -a "$SPECTRA_QCOM_SOURCE/Kbuild" "$SPECTRA_QCOM_DRIVER_DST"/
+  cp -a "$SPECTRA_QCOM_SOURCE/config" "$SPECTRA_QCOM_DRIVER_DST"/
+  cp -a "$SPECTRA_QCOM_SOURCE/common" "$SPECTRA_QCOM_DRIVER_DST"/
+  cp -a "$SPECTRA_QCOM_SOURCE/camera_kt" "$SPECTRA_QCOM_DRIVER_DST"/
   cp -a "$SPECTRA_QCOM_UAPI_SRC"/cam_*.h "$SPECTRA_QCOM_UAPI_DST"/
+  {
+    echo '#define CAMERA_COMPILE_TIME "vamOS kernel build"'
+    echo '#define CAMERA_COMPILE_HOST "vamos"'
+    echo '#define CAMERA_CC_VERSION "kernel-tree"'
+  } > "$SPECTRA_QCOM_DRIVER_DST/cam_generated_h"
 
   if [ -d "$SPECTRA_QCOM_PATCHES_DIR" ] && ls "$SPECTRA_QCOM_PATCHES_DIR"/*.patch 1>/dev/null 2>&1; then
     echo "-- Applying Qualcomm Spectra local patches --"

@@ -120,6 +120,10 @@ Add a new import path rather than mutating unrelated kernel directories directly
 ```text
 kernel/spectra-qcom/
   camera-driver/        # git submodule, pinned to 56b463c...
+    Kbuild              # Qualcomm build contract reused by vamOS
+    config/
+      qcm6490-camera.mk # camera_kt object and feature selection
+    common/
     camera_kt/
       drivers/...
       include/uapi/camera/media/cam_*.h
@@ -130,10 +134,11 @@ kernel/spectra-qcom/
     *.h, *.c for mainline-only compatibility shims
 ```
 
-Build-time install copies only what the kernel needs:
+Build-time install copies only what the kernel needs while preserving
+Qualcomm's `camera-driver/Kbuild` layout:
 
 ```text
-kernel/spectra-qcom/camera-driver/camera_kt/drivers/
+kernel/spectra-qcom/camera-driver/{Kbuild,config,common,camera_kt}/
   -> kernel/linux/drivers/media/platform/msm/camera/
 
 kernel/spectra-qcom/camera-driver/camera_kt/include/uapi/camera/media/cam_*.h
@@ -146,9 +151,13 @@ other as `<media/cam_defs.h>`, and openpilot already includes `<media/cam_*.h>`.
 Build glue should be tiny:
 
 - `tools/build/build_kernel.sh`: add `install_spectra_qcom()`, local patch
-  application, and cleanup logic.
-- `kernel/patches/NNNN-spectra-qcom-link.patch`: link the copied camera directory
-  into `drivers/media/platform/msm` Kconfig/Makefile.
+  application, cleanup logic, and deterministic `cam_generated_h` creation.
+- `kernel/patches/0012-media-platform-add-msm-camera-hook.patch`: link the copied
+  camera directory into `drivers/media/platform/msm` Kconfig/Makefile.
+- `kernel/spectra-qcom/patches/0001-integrate-camera-driver-kbuild.patch`: adapt
+  Qualcomm's module-oriented Kbuild to the vamOS in-tree boot-image build by
+  defaulting `CAMERA_ARCH=qcm6490` and building through
+  `CONFIG_SPECTRA_CAMERA`.
 - `kernel/configs/vamos.config`: enable the camera/media dependencies and the
   new Spectra config symbol.
 
@@ -161,13 +170,16 @@ the old AGNOS 4.9 port as source code.
 
 Expected kernel work buckets:
 
-- Kbuild integration: include paths, module/built-in selection, Kconfig symbols.
+- Kbuild integration: reuse Qualcomm's `camera-driver/Kbuild`, adapt
+  module/built-in selection, and keep Linux Kconfig limited to the top-level
+  `CONFIG_SPECTRA_CAMERA` symbol.
 - Core Linux API drift: V4L2/media registration, debugfs, timers, clocks,
   regulators, pinctrl, runtime PM, DMA/IOMMU helpers.
 - Qualcomm glue: CPAS, SMMU, interconnect, SCM, socinfo, and any downstream-only
   helper APIs still referenced by `camera_kt`.
 - DTS: SDM845 camera HW blocks, regulator supplies, mclk pinctrl, CCI, CSIPHY,
-  CSID/VFE/IFE, ICP/BPS, JPEG/FD if required for node creation.
+  CSID/VFE/IFE, ICP/BPS, JPEG/FD if required for node creation. Do not copy the
+  old branch's DTS changes; this hardware contract must be freshly audited.
 - Runtime naming: video node names, subdev names, and by-path symlinks.
 
 Prefer compatibility wrappers local to `kernel/spectra-qcom/compat/` for
@@ -365,7 +377,8 @@ Gate 1: source pin
 - Qualcomm camera-driver submodule is committed and pinned to the selected
   commit.
 - Header copy paths are deterministic.
-- Kernel build reaches `camera_kt` compilation.
+- Kernel build reaches Qualcomm's `camera-driver/Kbuild` and then `camera_kt`
+  compilation.
 
 Gate 2: kernel compile
 

@@ -1,0 +1,47 @@
+diff --git a/drivers/media/platform/Kconfig b/drivers/media/platform/Kconfig
+index 9287faafdce5..a055631419c2 100644
+--- a/drivers/media/platform/Kconfig
++++ b/drivers/media/platform/Kconfig
+@@ -55,6 +55,7 @@ source "drivers/media/platform/intel/Kconfig"
+ source "drivers/media/platform/marvell/Kconfig"
+ source "drivers/media/platform/mediatek/Kconfig"
+ source "drivers/media/platform/microchip/Kconfig"
++source "drivers/media/platform/msm/Kconfig"
+ source "drivers/media/platform/nuvoton/Kconfig"
+ source "drivers/media/platform/nvidia/Kconfig"
+ source "drivers/media/platform/nxp/Kconfig"
+diff --git a/drivers/media/platform/Makefile b/drivers/media/platform/Makefile
+index 6fd7db0541c7..5d8f81cabcb4 100644
+--- a/drivers/media/platform/Makefile
++++ b/drivers/media/platform/Makefile
+@@ -17,6 +17,7 @@ obj-y += intel/
+ obj-y += marvell/
+ obj-y += mediatek/
+ obj-y += microchip/
++obj-y += msm/
+ obj-y += nuvoton/
+ obj-y += nvidia/
+ obj-y += nxp/
+diff --git a/drivers/media/platform/msm/Kconfig b/drivers/media/platform/msm/Kconfig
+new file mode 100644
+index 000000000000..034e04377a24
+--- /dev/null
++++ b/drivers/media/platform/msm/Kconfig
+@@ -0,0 +1,8 @@
++# SPDX-License-Identifier: GPL-2.0-only
++
++menu "Qualcomm MSM camera drivers"
++	depends on ARCH_QCOM || COMPILE_TEST
++
++source "drivers/media/platform/msm/camera/Kconfig"
++
++endmenu
+diff --git a/drivers/media/platform/msm/Makefile b/drivers/media/platform/msm/Makefile
+new file mode 100644
+index 000000000000..cbf0b19476c5
+--- /dev/null
++++ b/drivers/media/platform/msm/Makefile
+@@ -0,0 +1,3 @@
++# SPDX-License-Identifier: GPL-2.0
++
++obj-y += camera/
