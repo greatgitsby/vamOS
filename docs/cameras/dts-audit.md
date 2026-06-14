@@ -184,6 +184,14 @@ It booted on mici as `6.18.0-vamos-c908681`; all SMMU nodes bound to
 `iommu_set_fault_handler()` for each non-secure CB because mainline 6.18 rejects
 fault handlers on DMA-cookie domains; binding continues.
 
+Commit `a26a734` attempted the first real CPAS CDM hardware node
+(`qcom,cam170-cpas-cdm0`) with only `ife`/`ife3` CDM clients and an SMMU label
+alias for `cpas-cdm`. It built and flashed, but did not boot: a 10-second MDMA
+`profile-boot` reached ABL `Exit BS` / `UEFI End` at about 4.55s and printed no
+Linux earlycon output. Commit `818c807` reverts only that CPAS CDM increment and
+boots on mici as `6.18.0-vamos-818c807`. Treat the `a26a734` shape as rejected;
+the next CPAS CDM attempt needs smaller boot-verified slices.
+
 ## Translation Notes
 
 - Add a downstream root compatible with `"qcom,camera_kt"`. The direct
@@ -234,8 +242,10 @@ fault handlers on DMA-cookie domains; binding continues.
    name, then verify the existing req-mgr/sync/CPAS nodes still boot.
 7. Add SMMU context banks required by openpilot (`ife`, `icp`, `cpas-cdm0`, and
    `cam-secure`), then verify platform device probes.
-8. Add real CPAS CDM with `ife`/`ife3` client names so the IFE manager can
-   return a valid `cdm_iommu` to openpilot.
+8. Reintroduce real CPAS CDM in smaller checkpoints. Start with the SMMU label
+   alias and/or a disabled/minimal `qcom,cam170-cpas-cdm0` node, then enable
+   only the `ife`/`ife3` client names after each boot is proven. Do not re-add
+   the failed `a26a734` node shape wholesale.
 9. Add ISP/ICP/BPS hardware nodes needed by openpilot streaming. Leave JPEG,
    LRME, IPE, FD, OPE, TFE, SFE, and custom blocks out.
 10. Add CCI, CSIPHY0-2, MCLK/reset/VANA pinctrl, fixed camera regulators, and
