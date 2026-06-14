@@ -700,6 +700,32 @@
 			status = "okay";
 		};
 
+		cam_cpas_cdm0: cpas-cdm0@ac48000 {
+			compatible = "qcom,cam170-cpas-cdm0";
+			reg = <0 0x0ac48000 0 0x1000>;
+			reg-names = "cpas-cdm";
+			reg-cam-base = <0x48000>;
+			interrupts = <GIC_SPI 461 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "cpas-cdm";
+			label = "cpas-cdm";
+			cell-index = <0>;
+			power-domains = <&clock_camcc TITAN_TOP_GDSC>;
+			clocks = <&gcc GCC_CAMERA_AHB_CLK>,
+				 <&gcc GCC_CAMERA_AXI_CLK>,
+				 <&clock_camcc CAM_CC_SOC_AHB_CLK>,
+				 <&clock_camcc CAM_CC_CPAS_AHB_CLK>,
+				 <&clock_camcc CAM_CC_CAMNOC_AXI_CLK>;
+			clock-names = "gcc_camera_ahb",
+				      "gcc_camera_axi",
+				      "cam_cc_soc_ahb_clk",
+				      "cam_cc_cpas_ahb_clk",
+				      "cam_cc_camnoc_axi_clk";
+			clock-rates = <0 0 0 0 0>;
+			clock-cntl-level = "svs";
+			cdm-client-names = "ife", "ife3";
+			status = "disabled";
+		};
+
 		cam_req_mgr: cam-req-mgr {
 			compatible = "qcom,cam-req-mgr";
 			status = "okay";
