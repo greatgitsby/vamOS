@@ -503,6 +503,11 @@
 		compatible = "qcom,camera_kt";
 		reg = <0 0x0ac00000 0 0x100000>;
 		status = "okay";
+
+		cam_sync: cam-sync {
+			compatible = "qcom,cam-sync";
+			status = "okay";
+		};
 	};
 };
 
