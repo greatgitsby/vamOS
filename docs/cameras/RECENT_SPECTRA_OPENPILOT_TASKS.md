@@ -208,9 +208,12 @@ Parallel from day one:
 - A req-mgr child increment was tested in commit `4b159fe` and boots on mici.
   Req-mgr binds sync, `/dev/video0` is `cam-req-mgr`, `/dev/video1` is
   `cam_sync`, and `/dev/media0`/`/dev/media1` are present.
+- An addressable-root increment was tested in commit `48cdb8e` and boots on
+  mici. Adding `#address-cells`, `#size-cells`, and `ranges` to the camera root
+  preserves req-mgr/sync binding and the same video/media nodes.
 - K3.1 fresh DT audit is recorded in `docs/cameras/dts-audit.md`.
-- K3.2 is now in progress. The next attempt should add SMMU/CPAS/CDM plumbing
-  incrementally under the proven root+sync+req-mgr shape.
+- K3.2 is now in progress. The next attempt should add CPAS as the first real
+  hardware-probing node under the proven addressable root+sync+req-mgr shape.
 
 ## 2. Lane P0 - Source Submodule And Audit
 

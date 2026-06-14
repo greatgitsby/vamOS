@@ -135,6 +135,12 @@ image booted on mici, req-mgr bound sync, and userspace nodes appeared:
 `/dev/video0` named `cam-req-mgr`, `/dev/video1` named `cam_sync`, plus
 `/dev/media0` and `/dev/media1`.
 
+Commit `48cdb8e` made the root an explicit addressable bus with
+`#address-cells`, `#size-cells`, and `ranges`, without adding hardware nodes.
+That image booted on mici and preserved the req-mgr/sync bindings and
+`/dev/video0`/`/dev/video1` nodes. This is the base shape for later children
+with `reg` ranges.
+
 ## Translation Notes
 
 - Add a downstream root compatible with `"qcom,camera_kt"`. The direct
@@ -178,8 +184,11 @@ image booted on mici, req-mgr bound sync, and userspace nodes appeared:
    the master.
 3. Keep `qcom,cam-req-mgr`; it boots, binds sync, and creates `/dev/video0`
    and `/dev/video1` in commit `4b159fe`.
-4. Add SMMU, CPAS, and CDM, then verify platform device probes.
-5. Add CCI, CSIPHY, MCLK/reset/VANA pinctrl, fixed camera regulators, and four
+4. Keep the explicit addressable root bus; it boots in commit `48cdb8e`.
+5. Add CPAS as the first real hardware-probing node after translating its
+   register, clock, power-domain, bus, and client properties.
+6. Add SMMU and CDM after CPAS is healthy, then verify platform device probes.
+7. Add CCI, CSIPHY, MCLK/reset/VANA pinctrl, fixed camera regulators, and four
    sensor slots. Verify chip-ID probing with the standalone camera test.
-6. Add ISP/ICP/JPEG/LRME hardware nodes needed by openpilot streaming, leaving
+8. Add ISP/ICP/JPEG/LRME hardware nodes needed by openpilot streaming, leaving
    FD/OPE/TFE/SFE/custom out until compiled and proven needed.
