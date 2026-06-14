@@ -53,6 +53,13 @@ The current `qcm6490-camera.mk` build enables:
 It does not enable FD, OPE, TFE, SFE, or custom camera blocks. Do not add those
 nodes for the first bring-up unless the build config changes.
 
+The current checked-out openpilot branch is narrower than the compiled kernel
+surface. It opens `cam-req-mgr`, `cam_sync`, `cam-isp`, `cam-icp`, three
+`cam-sensor-driver` indices, and three `cam-csiphy-driver` indices. Wide and
+road use IFE output; driver uses BPS through ICP. Do not add JPEG, LRME, IPE,
+FD, OPE, TFE, SFE, custom camera blocks, or a fourth camera slot unless
+openpilot starts consuming them.
+
 ## Current vamOS SDM845 Baseline
 
 `kernel/linux/arch/arm64/boot/dts/qcom/sdm845.dtsi` already contains mainline
@@ -210,9 +217,13 @@ to `cam-cpas`, req-mgr bound both sync and CPAS, and the expected nodes returned
 4. Keep the explicit addressable root bus; it boots in commit `48cdb8e`.
 5. Keep CPAS with the translated register, clock, power-domain, OPP, AHB ICC,
    and client properties. It boots and binds in commit `9703bd1`.
-6. Add SMMU and CDM after the proven CPAS checkpoint, then verify platform
-   device probes.
-7. Add CCI, CSIPHY, MCLK/reset/VANA pinctrl, fixed camera regulators, and four
-   sensor slots. Verify chip-ID probing with the standalone camera test.
-8. Add ISP/ICP/JPEG/LRME hardware nodes needed by openpilot streaming, leaving
-   FD/OPE/TFE/SFE/custom out until compiled and proven needed.
+6. Add the virtual CDM interface with only the parser-required ISP-facing client
+   name, then verify the existing req-mgr/sync/CPAS nodes still boot.
+7. Add SMMU context banks required by openpilot (`ife`, `icp`, `cpas-cdm0`, and
+   `cam-secure`), then verify platform device probes.
+8. Add real CPAS CDM with `ife`/`ife3` client names so the IFE manager can
+   return a valid `cdm_iommu` to openpilot.
+9. Add ISP/ICP/BPS hardware nodes needed by openpilot streaming. Leave JPEG,
+   LRME, IPE, FD, OPE, TFE, SFE, and custom blocks out.
+10. Add CCI, CSIPHY0-2, MCLK/reset/VANA pinctrl, fixed camera regulators, and
+   three sensor slots. Verify chip-ID probing with the standalone camera test.

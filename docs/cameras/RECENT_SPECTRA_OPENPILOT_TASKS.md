@@ -224,7 +224,16 @@ Parallel from day one:
     `/dev/media1`, and `/dev/v4l-subdev0` are present.
 - K3.1 fresh DT audit is recorded in `docs/cameras/dts-audit.md`.
 - K3.2 CPAS base is done through the boot-verified checkpoint in `9703bd1`.
-  The next DTS increment should add SMMU and CDM against this proven CPAS base.
+- The current checked-out openpilot branch only consumes `cam-req-mgr`,
+  `cam_sync`, `cam-isp`, `cam-icp`, three `cam-sensor-driver` indices, and
+  three `cam-csiphy-driver` indices. Its driver camera uses BPS through ICP;
+  there is no openpilot consumer for JPEG, LRME, FD, OPE, TFE, SFE, custom
+  camera blocks, IPE, or a fourth camera slot in this branch.
+- `8770602` added the first CDM-interface DTS checkpoint but was not flashed.
+  A follow-up trim keeps the CPAS/CDM client lists to the openpilot path only:
+  CSIPHY0-2, CCI0, CSID0-2, IFE0-2, virtual CDM, CPAS CDM, BPS0, and ICP0.
+  The next DTS checkpoints should be isolated as SMMU, real CPAS CDM, ISP/ICP,
+  and then CCI/CSIPHY/sensors.
 
 ## 2. Lane P0 - Source Submodule And Audit
 
@@ -546,18 +555,18 @@ Work:
 - Keep the active `camera_kt` root directly under `&soc`; commit `c6783a6`
   proved that root-only shape boots on mici. Do not re-add the failed `5b02808`
   child set wholesale; add one child family per flash.
-- Add the compiled `camera_kt` node families: cam-req-mgr, cam-sync, SMMU,
-  CPAS, CDM interface/CDM, CCI, CSIPHY, CSID/VFE/IFE, ICP/A5/IPE/BPS, JPEG,
-  LRME, and four sensor slots.
-- Do not add FD, OPE, TFE, SFE, or custom camera nodes unless their build
-  configs are enabled.
+- Add only the `camera_kt` node families consumed by the current openpilot
+  branch: cam-req-mgr, cam-sync, SMMU, CPAS, CDM interface/CPAS CDM, CCI,
+  CSIPHY0-2, CSID0-2, VFE/IFE0-2, ICP/A5/BPS, and three sensor slots.
+- Do not add JPEG, LRME, FD, OPE, TFE, SFE, custom, IPE, or fourth-camera nodes
+  unless openpilot starts consuming them.
 - Keep upstream mainline `camss` and `cci` disabled to avoid register overlap.
 - Translate legacy GDSC regulator supplies to mainline CAMCC `power-domains`
   where the recent driver supports genpd.
-- Wire comma-specific regulators, MCLK/reset/VANA pinctrl states, CCI masters,
-  and sensor slots from the legacy AGNOS/openpilot tree after translating
-  property names for recent `camera_kt` (`gpios-shared`, `csiphy-sd-index`,
-  `cci-master`).
+- Wire only the comma-specific regulators, MCLK/reset/VANA pinctrl states, CCI
+  masters, and sensor slots required by the three `ALL_CAMERA_CONFIGS` entries
+  in the current openpilot branch, after translating property names for recent
+  `camera_kt` (`gpios-shared`, `csiphy-sd-index`, `cci-master`).
 - Preserve platform and subdev names when practical.
 
 Acceptance:
