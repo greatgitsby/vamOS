@@ -1028,8 +1028,6 @@
 			reg-names = "bps_top";
 			reg-cam-base = <0x6f000>;
 			cell-index = <0>;
-			power-domains = <&clock_camcc BPS_GDSC>;
-			qcom,skip-probe-power-domain-cycle;
 			clocks = <&clock_camcc CAM_CC_BPS_AHB_CLK>,
 				 <&clock_camcc CAM_CC_BPS_AREG_CLK>,
 				 <&clock_camcc CAM_CC_BPS_AXI_CLK>,

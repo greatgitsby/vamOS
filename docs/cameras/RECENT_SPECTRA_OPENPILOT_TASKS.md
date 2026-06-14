@@ -283,6 +283,13 @@ Parallel from day one:
   `ignore_loglevel`, `loglevel=8`, and `initcall_debug`. This is deliberate
   diagnostic noise for MDMA `profile-boot`; remove or quiet it after the DTS
   hardware-node gate is stable.
+- First raw serial capture with that earlycon command line reaches Linux and
+  `camera_init`, then reports `bps_gdsc status stuck at 'off'` while generic
+  platform probing calls `dev_pm_domain_attach()` for `qcom,bps`. Because this
+  happens before the Spectra driver's probe-time skip property can run, the next
+  boot checkpoint keeps `qcom,bps` in the graph but omits its mainline
+  `BPS_GDSC` `power-domains` attachment. BPS runtime power is now an explicit
+  follow-up after the kernel boots with the minimal ISP/ICP graph.
 
 ## 2. Lane P0 - Source Submodule And Audit
 

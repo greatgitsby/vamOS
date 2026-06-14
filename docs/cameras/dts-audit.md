@@ -207,14 +207,25 @@ probe/power/reset path, not the SMMU alias, disabled node shape, or added
 
 The next active hardware checkpoint keeps CPAS CDM disabled and reintroduces
 only the openpilot-needed ISP/ICP blocks: `qcom,cam-isp`, CSID/VFE indices 0,
-1, and lite index 2, `qcom,cam-icp`, `qcom,a5`, and `qcom,bps`. These nodes use
-mainline CAMCC `power-domains`, but add `qcom,skip-probe-power-domain-cycle` so
-the recent `camera_kt` SOC helper does not briefly enable/disable the camera
-GDSCs during component bind. Runtime power-domain enablement remains unchanged;
-the property only avoids the probe-time cycle while the DTS hardware contract is
-being isolated. Validate this checkpoint with a kernel build, flash, 30-second
-serial `uname -a`, and a 30-second MDMA `profile-boot` before adding CCI,
-CSIPHY, or sensor nodes.
+1, and lite index 2, `qcom,cam-icp`, `qcom,a5`, and `qcom,bps`. The IFE, VFE,
+CSID, and A5 nodes use mainline CAMCC `power-domains`, but add
+`qcom,skip-probe-power-domain-cycle` so the recent `camera_kt` SOC helper does
+not briefly enable/disable the camera GDSCs during component bind. Runtime
+power-domain enablement remains unchanged; the property only avoids the
+probe-time cycle while the DTS hardware contract is being isolated.
+
+Commit `ed981c3` enables the correct mainline Qualcomm GENI earlycon command
+line (`earlycon=qcom_geni,0x00a84000,115200n8`) with temporary high-verbosity
+boot logging. The first raw serial capture with that command line proves Linux
+starts after UEFI and reaches `camera_init`; it then trips
+`bps_gdsc status stuck at 'off'` from `dev_pm_domain_attach()` while creating
+the `qcom,bps` platform device. That happens before the Spectra driver probe
+can honor `qcom,skip-probe-power-domain-cycle`, so the next checkpoint keeps the
+BPS node present but intentionally omits `power-domains = <&clock_camcc
+BPS_GDSC>`. Treat BPS runtime power as an isolated follow-up after the kernel
+boots with the minimal ISP/ICP device graph. Validate this checkpoint with a
+kernel build, flash, 30-second serial `uname -a`, and a 30-second serial boot
+capture before adding CCI, CSIPHY, or sensor nodes.
 
 ## Translation Notes
 
