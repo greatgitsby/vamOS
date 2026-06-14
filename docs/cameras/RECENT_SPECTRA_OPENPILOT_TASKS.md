@@ -193,12 +193,17 @@ Parallel from day one:
 - Latest flashed/tested kernel had Spectra built in and booted on mici, but no
   camera device nodes appeared because DT has no `qcom,camera_kt` root yet.
   Dmesg reported `No matching device found for camera_kt driver = -19`.
+- A minimal active `qcom,camera_kt` root with only `qcom,cam-req-mgr` and
+  `qcom,cam-sync` was tested in commit `5b02808` and boot-looped before Linux
+  printed anything. MDMA `profile-boot` reached ABL `Exit BS`, then the device
+  restarted roughly 58 seconds later. Commit `f9ca57e` backs out only that DTS
+  root; mici boots again and reports
+  `6.18.0-vamos-f9ca57e` from `uname -a`.
 - K3.1 fresh DT audit is recorded in `docs/cameras/dts-audit.md`.
-- K3.2 is now in progress. First-pass DT root plumbing adds `qcom,camera_kt`,
-  `qcom,cam-req-mgr`, and `qcom,cam-sync`; `./vamos build kernel` succeeds and
-  the generated mici DTB contains those nodes. The remaining K3.2 work is the
-  downstream hardware topology without importing the old branch's device tree
-  changes.
+- K3.2 is now in progress, but the next attempt must not repeat the direct
+  active root-under-`&soc` shape from `5b02808`. First validate the safest root
+  placement and parent bus shape in DTB only, then flash one small change at a
+  time.
 
 ## 2. Lane P0 - Source Submodule And Audit
 
@@ -517,6 +522,10 @@ Work:
 - Add a downstream camera root compatible with `qcom,camera_kt` so
   `camera_kt/drivers/camera_main.c` can bind and populate child platform
   devices.
+- Do not re-add the minimal active `camera_kt` root directly under `&soc` as
+  tested in `5b02808`; it boot-looped before Linux output on mici. The next root
+  attempt must change one variable at a time, starting with root placement and
+  bus shape, and must be flashed before adding any child hardware nodes.
 - Add the compiled `camera_kt` node families: cam-req-mgr, cam-sync, SMMU,
   CPAS, CDM interface/CDM, CCI, CSIPHY, CSID/VFE/IFE, ICP/A5/IPE/BPS, JPEG,
   LRME, and four sensor slots.
