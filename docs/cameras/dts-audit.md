@@ -112,15 +112,23 @@ before Linux printed anything. MDMA `profile-boot` reached ABL `Exit BS`; about
 58 seconds later the boot ROM banner appeared again. Commit `f9ca57e` removed
 that DTS node and restored boot.
 
-Treat the direct active root-under-`&soc` shape as failed. The next root
-experiment should change one variable at a time, preferably root placement or
-an explicit child bus shape before any hardware children are added.
+Commit `c6783a6` then tested only the direct active root-under-`&soc` node:
+`camera-kt@ac00000` with `compatible = "qcom,camera_kt"`, `reg`, and no
+children. That image booted on mici and dmesg reported:
+
+```text
+CAM_INFO: CAM-UTIL: cam_main_probe: 320: Spectra camera_kt driver initialized rc : 0
+```
+
+Treat the combined req-mgr/sync child shape from `5b02808` as failed, not the
+root itself. Continue by changing one child variable at a time.
 
 ## Translation Notes
 
-- Add a downstream root compatible with `"qcom,camera_kt"`, but do not repeat
-  the failed minimal active root directly under `&soc` from commit `5b02808`.
-  Verify root placement and parent bus shape on device before adding children.
+- Add a downstream root compatible with `"qcom,camera_kt"`. The direct
+  root-under-`&soc` shape is now proven to boot when it has no children.
+  Do not repeat the failed `5b02808` shape that added req-mgr and sync
+  together before each child has been isolated.
   Hardware nodes with `reg` ranges may need an explicit addressable bus layer
   when they are added.
 - Add `qcom,cam-req-mgr` and `qcom,cam-sync` early. Legacy AGNOS has req-mgr;
@@ -151,12 +159,14 @@ an explicit child bus shape before any hardware children are added.
 
 ## Bring-up Order
 
-1. Find a root placement/bus shape that boots on mici. The failed shape is an
-   active `camera-kt` node directly under `&soc`.
-2. Add only `qcom,cam-req-mgr` and `qcom,cam-sync`, then confirm the boot log
-   changes from `No matching device found` to a controlled probe result.
-3. Add SMMU, CPAS, CDM, sync/request-manager, and verify platform device probes.
-4. Add CCI, CSIPHY, MCLK/reset/VANA pinctrl, fixed camera regulators, and four
+1. Keep the direct active `camera-kt` root under `&soc`; it boots on mici in
+   commit `c6783a6`.
+2. Add `qcom,cam-sync` alone and verify boot. No video node is expected yet
+   because sync only registers a component until req-mgr becomes the master.
+3. Add `qcom,cam-req-mgr` after sync is isolated, then verify boot plus
+   `/dev/video*` creation.
+4. Add SMMU, CPAS, CDM, sync/request-manager, and verify platform device probes.
+5. Add CCI, CSIPHY, MCLK/reset/VANA pinctrl, fixed camera regulators, and four
    sensor slots. Verify chip-ID probing with the standalone camera test.
-5. Add ISP/ICP/JPEG/LRME hardware nodes needed by openpilot streaming, leaving
+6. Add ISP/ICP/JPEG/LRME hardware nodes needed by openpilot streaming, leaving
    FD/OPE/TFE/SFE/custom out until compiled and proven needed.
