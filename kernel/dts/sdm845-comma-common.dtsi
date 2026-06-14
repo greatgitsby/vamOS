@@ -546,6 +546,7 @@
 			clock-cntl-level = "suspend", "minsvs", "lowsvs",
 					   "svs", "svs_l1", "nominal",
 					   "turbo";
+			operating-points-v2 = <&cam_cpas_opp_table>;
 			interconnects = <&gladiator_noc MASTER_APPSS_PROC 0
 					 &config_noc SLAVE_CAMERA_CFG 0>;
 			interconnect-names = "cam_ahb";
@@ -560,6 +561,18 @@
 				       "jpeg-dma0", "jpeg-enc0", "fd0",
 				       "lrmecpas0";
 			status = "okay";
+
+			cam_cpas_opp_table: opp-table {
+				compatible = "operating-points-v2";
+
+				opp-19200000 {
+					opp-hz = /bits/ 64 <19200000>;
+				};
+
+				opp-80000000 {
+					opp-hz = /bits/ 64 <80000000>;
+				};
+			};
 
 			camera-bus-nodes {
 				cpas_bus_level0: level0 {
