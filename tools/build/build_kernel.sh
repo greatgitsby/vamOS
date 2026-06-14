@@ -7,6 +7,13 @@ cd "$DIR"
 TOOLS="$DIR/tools/bin"
 KERNEL_DIR="$DIR/kernel/linux"
 PATCHES_DIR="$DIR/kernel/patches"
+SPECTRA_QCOM_DIR="$DIR/kernel/spectra-qcom"
+SPECTRA_QCOM_SOURCE="$SPECTRA_QCOM_DIR/camera-driver/camera_kt"
+SPECTRA_QCOM_DRIVER_SRC="$SPECTRA_QCOM_SOURCE/drivers"
+SPECTRA_QCOM_UAPI_SRC="$SPECTRA_QCOM_SOURCE/include/uapi/camera/media"
+SPECTRA_QCOM_PATCHES_DIR="$SPECTRA_QCOM_DIR/patches"
+SPECTRA_QCOM_DRIVER_DST="$KERNEL_DIR/drivers/media/platform/msm/camera"
+SPECTRA_QCOM_UAPI_DST="$KERNEL_DIR/include/uapi/media"
 TMP_DIR="$DIR/build/tmp-kernel"
 OUT_DIR="$DIR/build"
 BOOT_IMG=./boot.img
@@ -132,9 +139,45 @@ apply_patches() {
   fi
 }
 
+clean_spectra_qcom_install() {
+  rm -rf "$SPECTRA_QCOM_DRIVER_DST"
+
+  if [ -d "$SPECTRA_QCOM_UAPI_DST" ]; then
+    rm -f "$SPECTRA_QCOM_UAPI_DST"/cam_*.h
+    rmdir "$SPECTRA_QCOM_UAPI_DST" 2>/dev/null || true
+  fi
+}
+
+install_spectra_qcom() {
+  echo "-- Installing Qualcomm Spectra source --"
+
+  if [ ! -d "$SPECTRA_QCOM_DRIVER_SRC" ] || [ ! -d "$SPECTRA_QCOM_UAPI_SRC" ]; then
+    echo "Missing Qualcomm Spectra source. Run './vamos setup' to initialize submodules." >&2
+    exit 1
+  fi
+
+  clean_spectra_qcom_install
+
+  mkdir -p "$(dirname "$SPECTRA_QCOM_DRIVER_DST")" "$SPECTRA_QCOM_UAPI_DST"
+  cp -a "$SPECTRA_QCOM_DRIVER_SRC" "$SPECTRA_QCOM_DRIVER_DST"
+  cp -a "$SPECTRA_QCOM_UAPI_SRC"/cam_*.h "$SPECTRA_QCOM_UAPI_DST"/
+
+  if [ -d "$SPECTRA_QCOM_PATCHES_DIR" ] && ls "$SPECTRA_QCOM_PATCHES_DIR"/*.patch 1>/dev/null 2>&1; then
+    echo "-- Applying Qualcomm Spectra local patches --"
+    for patch in "$SPECTRA_QCOM_PATCHES_DIR"/*.patch; do
+      echo "Applying $(basename "$patch")"
+      git -C "$KERNEL_DIR" apply --check --whitespace=error "$patch"
+      git -C "$KERNEL_DIR" apply --whitespace=error "$patch"
+    done
+  fi
+}
+
 build_kernel() {
   # Apply patches to kernel tree
   apply_patches
+
+  # Install Qualcomm Spectra source and UAPI from the pinned source submodule
+  install_spectra_qcom
 
   # Install the device tree files
   install_dts
@@ -234,8 +277,10 @@ build_kernel() {
 }
 
 clean_kernel_tree() {
+  clean_spectra_qcom_install
   git -C "$KERNEL_DIR" reset --hard HEAD >/dev/null 2>&1 || true
   git -C "$KERNEL_DIR" clean -fd >/dev/null 2>&1 || true
+  clean_spectra_qcom_install
 }
 
 cleanup() {
@@ -243,8 +288,11 @@ cleanup() {
 
   if [ "$HOST_OS" = "Darwin" ]; then
     docker exec -i -u "$(id -u):$(id -g)" "$CONTAINER_ID" bash >/dev/null 2>&1 <<EOF || true
+$(declare -f clean_spectra_qcom_install)
 $(declare -f clean_kernel_tree)
 KERNEL_DIR='$KERNEL_DIR'
+SPECTRA_QCOM_DRIVER_DST='$SPECTRA_QCOM_DRIVER_DST'
+SPECTRA_QCOM_UAPI_DST='$SPECTRA_QCOM_UAPI_DST'
 clean_kernel_tree
 EOF
   else
@@ -278,6 +326,13 @@ DIR='$DIR'
 TOOLS='$TOOLS'
 KERNEL_DIR='$KERNEL_DIR'
 PATCHES_DIR='$PATCHES_DIR'
+SPECTRA_QCOM_DIR='$SPECTRA_QCOM_DIR'
+SPECTRA_QCOM_SOURCE='$SPECTRA_QCOM_SOURCE'
+SPECTRA_QCOM_DRIVER_SRC='$SPECTRA_QCOM_DRIVER_SRC'
+SPECTRA_QCOM_UAPI_SRC='$SPECTRA_QCOM_UAPI_SRC'
+SPECTRA_QCOM_PATCHES_DIR='$SPECTRA_QCOM_PATCHES_DIR'
+SPECTRA_QCOM_DRIVER_DST='$SPECTRA_QCOM_DRIVER_DST'
+SPECTRA_QCOM_UAPI_DST='$SPECTRA_QCOM_UAPI_DST'
 TMP_DIR='$TMP_DIR'
 OUT_DIR='$OUT_DIR'
 BOOT_IMG='$BOOT_IMG'
@@ -294,7 +349,9 @@ git -C / config --global --add safe.directory '$KERNEL_DIR'
 
 $(declare -f apply_patches)
 $(declare -f build_kernel)
+$(declare -f clean_spectra_qcom_install)
 $(declare -f clean_kernel_tree)
+$(declare -f install_spectra_qcom)
 $(declare -f install_dts)
 
 build_kernel
