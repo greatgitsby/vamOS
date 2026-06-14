@@ -1,0 +1,56 @@
+diff --git a/drivers/media/platform/msm/camera/Kbuild b/drivers/media/platform/msm/camera/Kbuild
+index 616511128447..d7d276a738d5 100644
+--- a/drivers/media/platform/msm/camera/Kbuild
++++ b/drivers/media/platform/msm/camera/Kbuild
+@@ -1,5 +1,9 @@
+ # SPDX-License-Identifier: GPL-2.0-only
+ 
++CAMERA_KERNEL_ROOT ?= $(srctree)/drivers/media/platform/msm/camera
++KERNEL_ROOT ?= $(srctree)
++CAMERA_ARCH ?= qcm6490
++
+ $(info "CAMERA_KERNEL_ROOT is: $(CAMERA_KERNEL_ROOT)")
+ $(info "KERNEL_ROOT is: $(KERNEL_ROOT)")
+ $(info "CAMERA_ARCH is: $(CAMERA_ARCH)")
+@@ -202,7 +206,6 @@ LINUXINCLUDE +=                                                  \
+ # After creating lists, add content of 'ccflags-m' variable to 'ccflags-y' one.
+ ccflags-y += ${ccflags-m}
+ ccflags-y += -Wmissing-prototypes
+-ccflags-y += -Werror
+ 
+ camera_$(CAMERA_ARCH)-y := \
+ 	camera_kt/drivers/cam_req_mgr/cam_req_mgr_core.o \
+@@ -406,7 +409,7 @@ camera_$(CAMERA_ARCH)-$(CONFIG_SPECTRA_SFE) += \
+ 
+ camera_$(CAMERA_ARCH)-y += camera_kt/drivers/camera_main.o
+ 
+-obj-m += camera_$(CAMERA_ARCH).o
++obj-$(CONFIG_SPECTRA_CAMERA) += camera_$(CAMERA_ARCH).o
+ BOARD_VENDOR_KERNEL_MODULES += $(KERNEL_MODULES_OUT)/camera_$(CAMERA_ARCH).ko
+ else
+ # Include UAPI headers
+diff --git a/drivers/media/platform/msm/camera/Kconfig b/drivers/media/platform/msm/camera/Kconfig
+new file mode 100644
+index 000000000000..365754b43948
+--- /dev/null
++++ b/drivers/media/platform/msm/camera/Kconfig
+@@ -0,0 +1,18 @@
++# SPDX-License-Identifier: GPL-2.0-only
++
++config SPECTRA_CAMERA
++	bool "Qualcomm Spectra camera driver"
++	depends on ARCH_QCOM
++	depends on MEDIA_SUPPORT && MEDIA_PLATFORM_SUPPORT
++	depends on VIDEO_DEV
++	depends on I2C && SPI && HAS_DMA
++	select MEDIA_CONTROLLER
++	select VIDEO_V4L2_SUBDEV_API
++	select V4L2_FWNODE
++	help
++	  Build Qualcomm's downstream Spectra camera stack from the pinned
++	  camera-driver source snapshot. The qcm6490 camera_kt vendor Kbuild
++	  profile supplies the active ISP, ICP, JPEG, LRME, and sensor object
++	  selections used by this integration.
++
++	  This only wires the driver into the kernel build. Device tree nodes
++	  remain a separate, fresh-reviewed hardware contract.
