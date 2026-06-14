@@ -498,6 +498,14 @@
 	vdda-pll-supply = <&vdda_usb2_ss_core>;
 };
 
+&soc {
+	camera_kt: camera-kt@ac00000 {
+		compatible = "qcom,camera_kt";
+		reg = <0 0x0ac00000 0 0x100000>;
+		status = "okay";
+	};
+};
+
 &vreg_lvs1a_1p8 {
 	regulator-always-on;
 };
