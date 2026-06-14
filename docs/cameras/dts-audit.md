@@ -237,6 +237,15 @@ hits a null `cam_ife_csid_component_unbind()` path. The staged DT now adds
 shared OPP tables for CSID and VFE, plus A5/BPS OPP tables, using the same source
 clock frequencies already present in each node's `clock-rates`.
 
+The next bind failure is in ICP, not the ISP side. openpilot's new userspace path
+uses BPS, but the recent `camera_kt` ICP manager still models IPE and BPS as one
+subsystem and requires an IPE device interface even for BPS-oriented flows. The
+staged DT therefore adds only the ICP-supporting `qcom,ipe0` and `qcom,ipe1`
+nodes, wires them into `qcom,cam-icp`, and gives them a shared OPP table. Like
+BPS, these IPE nodes deliberately omit mainline `IPE_0_GDSC`/`IPE_1_GDSC`
+`power-domains` for this boot checkpoint because those CAMCC GDSCs are `HW_CTRL |
+POLL_CFG_GDSCR` in mainline and need a separate runtime-power investigation.
+
 ## Translation Notes
 
 - Add a downstream root compatible with `"qcom,camera_kt"`. The direct

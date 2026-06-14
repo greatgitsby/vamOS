@@ -297,6 +297,13 @@ Parallel from day one:
   not yet have `operating-points-v2`. The staged fix adds OPP tables for CSID,
   VFE, A5, and BPS using the existing source-clock frequencies from
   `clock-rates`.
+- The `7082098` checkpoint boots to shell and gets past CSID/VFE OPP setup. It
+  then fails ICP aggregate binding because `cam_icp_mgr_alloc_devs()` requires
+  `num-ipe`, and the ICP manager stores an IPE interface even though openpilot's
+  immediate path is BPS-focused. The next staged DT adds `qcom,ipe0` and
+  `qcom,ipe1` with clocks/OPPs and wires them into `qcom,cam-icp`; their
+  mainline IPE GDSCs stay unattached for this checkpoint, matching the BPS GDSC
+  staging rule.
 
 ## 2. Lane P0 - Source Submodule And Audit
 
