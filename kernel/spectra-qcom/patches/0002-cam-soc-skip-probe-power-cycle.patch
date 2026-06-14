@@ -1,0 +1,32 @@
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_utils/cam_soc_util.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_utils/cam_soc_util.c
+index 75277f1b9fa0..e3619c84b422 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_utils/cam_soc_util.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_utils/cam_soc_util.c
+@@ -1864,13 +1864,20 @@ int cam_soc_util_request_platform_resource(
+ 
+ 	pm_runtime_enable(soc_info->dev);
+ 
+-	/*
+-	 * Doing a pm_runtime_get_sync() and pm_runtime_put_sync() after pm_runtime_enable
+-	 * makes sure that the GDSC is off and only enabled later by the usecase when there
+-	 * is such a requirement.
+-	 */
+-	cam_soc_util_power_domain_enable_default(soc_info);
+-	cam_soc_util_power_domain_disable_default(soc_info);
++	if (!of_property_read_bool(soc_info->dev->of_node,
++		"qcom,skip-probe-power-domain-cycle")) {
++		/*
++		 * Doing a pm_runtime_get_sync() and pm_runtime_put_sync()
++		 * after pm_runtime_enable makes sure that the GDSC is off
++		 * and only enabled later by the usecase when required.
++		 */
++		cam_soc_util_power_domain_enable_default(soc_info);
++		cam_soc_util_power_domain_disable_default(soc_info);
++	} else {
++		CAM_DBG(CAM_UTIL,
++			"Skip probe power-domain cycle for %s",
++			soc_info->dev_name);
++	}
+ 
+ 	if (soc_info->irq_num > 0) {
+ 		rc = devm_request_irq(soc_info->dev, soc_info->irq_num,

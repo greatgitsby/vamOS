@@ -705,11 +705,12 @@
 			reg = <0 0x0ac48000 0 0x1000>;
 			reg-names = "cpas-cdm";
 			reg-cam-base = <0x48000>;
-			interrupts = <GIC_SPI 461 IRQ_TYPE_LEVEL_HIGH>;
+			interrupts = <GIC_SPI 461 IRQ_TYPE_EDGE_RISING>;
 			interrupt-names = "cpas-cdm";
 			label = "cpas-cdm";
 			cell-index = <0>;
 			power-domains = <&clock_camcc TITAN_TOP_GDSC>;
+			qcom,skip-probe-power-domain-cycle;
 			clocks = <&gcc GCC_CAMERA_AHB_CLK>,
 				 <&gcc GCC_CAMERA_AXI_CLK>,
 				 <&clock_camcc CAM_CC_SOC_AHB_CLK>,
@@ -724,6 +725,329 @@
 			clock-cntl-level = "svs";
 			cdm-client-names = "ife", "ife3";
 			status = "disabled";
+		};
+
+		cam_isp: cam-isp {
+			compatible = "qcom,cam-isp";
+			arch-compat = "ife";
+			status = "okay";
+		};
+
+		cam_csid0: csid0@acb3000 {
+			compatible = "qcom,csid170";
+			reg = <0 0x0acb3000 0 0x1000>;
+			reg-names = "csid";
+			reg-cam-base = <0xb3000>;
+			interrupts = <GIC_SPI 464 IRQ_TYPE_EDGE_RISING>;
+			interrupt-names = "csid";
+			cell-index = <0>;
+			power-domains = <&clock_camcc IFE_0_GDSC>;
+			qcom,skip-probe-power-domain-cycle;
+			clocks = <&gcc GCC_CAMERA_AHB_CLK>,
+				 <&gcc GCC_CAMERA_AXI_CLK>,
+				 <&clock_camcc CAM_CC_SOC_AHB_CLK>,
+				 <&clock_camcc CAM_CC_CPAS_AHB_CLK>,
+				 <&clock_camcc CAM_CC_SLOW_AHB_CLK_SRC>,
+				 <&clock_camcc CAM_CC_IFE_0_CSID_CLK>,
+				 <&clock_camcc CAM_CC_IFE_0_CSID_CLK_SRC>,
+				 <&clock_camcc CAM_CC_IFE_0_CPHY_RX_CLK>,
+				 <&clock_camcc CAM_CC_CPHY_RX_CLK_SRC>,
+				 <&clock_camcc CAM_CC_IFE_0_CLK>,
+				 <&clock_camcc CAM_CC_IFE_0_CLK_SRC>,
+				 <&clock_camcc CAM_CC_CAMNOC_AXI_CLK>,
+				 <&clock_camcc CAM_CC_IFE_0_AXI_CLK>;
+			clock-names = "camera_ahb",
+				      "camera_axi",
+				      "soc_ahb_clk",
+				      "cpas_ahb_clk",
+				      "slow_ahb_clk_src",
+				      "ife_csid_clk",
+				      "ife_csid_clk_src",
+				      "ife_cphy_rx_clk",
+				      "cphy_rx_clk_src",
+				      "ife_clk",
+				      "ife_clk_src",
+				      "camnoc_axi_clk",
+				      "ife_axi_clk";
+			clock-rates = <0 0 0 0 0 0 384000000 0 0 0 404000000 0 0>,
+				      <0 0 0 0 0 0 538000000 0 0 0 600000000 0 0>;
+			clock-cntl-level = "svs", "turbo";
+			src-clock-name = "ife_csid_clk_src";
+			clock-control-debugfs = "true";
+			status = "okay";
+		};
+
+		cam_vfe0: vfe0@acaf000 {
+			compatible = "qcom,vfe170";
+			reg = <0 0x0acaf000 0 0x4000>;
+			reg-names = "ife";
+			reg-cam-base = <0xaf000>;
+			interrupts = <GIC_SPI 465 IRQ_TYPE_EDGE_RISING>;
+			interrupt-names = "ife";
+			cell-index = <0>;
+			power-domains = <&clock_camcc IFE_0_GDSC>;
+			qcom,skip-probe-power-domain-cycle;
+			clocks = <&gcc GCC_CAMERA_AHB_CLK>,
+				 <&gcc GCC_CAMERA_AXI_CLK>,
+				 <&clock_camcc CAM_CC_SOC_AHB_CLK>,
+				 <&clock_camcc CAM_CC_CPAS_AHB_CLK>,
+				 <&clock_camcc CAM_CC_SLOW_AHB_CLK_SRC>,
+				 <&clock_camcc CAM_CC_IFE_0_CLK>,
+				 <&clock_camcc CAM_CC_IFE_0_CLK_SRC>,
+				 <&clock_camcc CAM_CC_CAMNOC_AXI_CLK>,
+				 <&clock_camcc CAM_CC_IFE_0_AXI_CLK>;
+			clock-names = "camera_ahb",
+				      "camera_axi",
+				      "soc_ahb_clk",
+				      "cpas_ahb_clk",
+				      "slow_ahb_clk_src",
+				      "ife_clk",
+				      "ife_clk_src",
+				      "camnoc_axi_clk",
+				      "ife_axi_clk";
+			clock-rates = <0 0 0 0 0 0 404000000 0 0>,
+				      <0 0 0 0 0 0 480000000 0 0>,
+				      <0 0 0 0 0 0 600000000 0 0>;
+			clock-cntl-level = "svs", "svs_l1", "turbo";
+			src-clock-name = "ife_clk_src";
+			clock-control-debugfs = "true";
+			clock-names-option = "ife_dsp_clk";
+			clocks-option = <&clock_camcc CAM_CC_IFE_0_DSP_CLK>;
+			clock-rates-option = <600000000>;
+			status = "okay";
+		};
+
+		cam_csid1: csid1@acba000 {
+			compatible = "qcom,csid170";
+			reg = <0 0x0acba000 0 0x1000>;
+			reg-names = "csid";
+			reg-cam-base = <0xba000>;
+			interrupts = <GIC_SPI 466 IRQ_TYPE_EDGE_RISING>;
+			interrupt-names = "csid";
+			cell-index = <1>;
+			power-domains = <&clock_camcc IFE_1_GDSC>;
+			qcom,skip-probe-power-domain-cycle;
+			clocks = <&gcc GCC_CAMERA_AHB_CLK>,
+				 <&gcc GCC_CAMERA_AXI_CLK>,
+				 <&clock_camcc CAM_CC_SOC_AHB_CLK>,
+				 <&clock_camcc CAM_CC_CPAS_AHB_CLK>,
+				 <&clock_camcc CAM_CC_SLOW_AHB_CLK_SRC>,
+				 <&clock_camcc CAM_CC_IFE_1_CSID_CLK>,
+				 <&clock_camcc CAM_CC_IFE_1_CSID_CLK_SRC>,
+				 <&clock_camcc CAM_CC_IFE_1_CPHY_RX_CLK>,
+				 <&clock_camcc CAM_CC_CPHY_RX_CLK_SRC>,
+				 <&clock_camcc CAM_CC_IFE_1_CLK>,
+				 <&clock_camcc CAM_CC_IFE_1_CLK_SRC>,
+				 <&clock_camcc CAM_CC_CAMNOC_AXI_CLK>,
+				 <&clock_camcc CAM_CC_IFE_1_AXI_CLK>;
+			clock-names = "camera_ahb",
+				      "camera_axi",
+				      "soc_ahb_clk",
+				      "cpas_ahb_clk",
+				      "slow_ahb_clk_src",
+				      "ife_csid_clk",
+				      "ife_csid_clk_src",
+				      "ife_cphy_rx_clk",
+				      "cphy_rx_clk_src",
+				      "ife_clk",
+				      "ife_clk_src",
+				      "camnoc_axi_clk",
+				      "ife_axi_clk";
+			clock-rates = <0 0 0 0 0 0 384000000 0 0 0 404000000 0 0>,
+				      <0 0 0 0 0 0 538000000 0 0 0 600000000 0 0>;
+			clock-cntl-level = "svs", "turbo";
+			src-clock-name = "ife_csid_clk_src";
+			clock-control-debugfs = "true";
+			status = "okay";
+		};
+
+		cam_vfe1: vfe1@acb6000 {
+			compatible = "qcom,vfe170";
+			reg = <0 0x0acb6000 0 0x4000>;
+			reg-names = "ife";
+			reg-cam-base = <0xb6000>;
+			interrupts = <GIC_SPI 467 IRQ_TYPE_EDGE_RISING>;
+			interrupt-names = "ife";
+			cell-index = <1>;
+			power-domains = <&clock_camcc IFE_1_GDSC>;
+			qcom,skip-probe-power-domain-cycle;
+			clocks = <&gcc GCC_CAMERA_AHB_CLK>,
+				 <&gcc GCC_CAMERA_AXI_CLK>,
+				 <&clock_camcc CAM_CC_SOC_AHB_CLK>,
+				 <&clock_camcc CAM_CC_CPAS_AHB_CLK>,
+				 <&clock_camcc CAM_CC_SLOW_AHB_CLK_SRC>,
+				 <&clock_camcc CAM_CC_IFE_1_CLK>,
+				 <&clock_camcc CAM_CC_IFE_1_CLK_SRC>,
+				 <&clock_camcc CAM_CC_CAMNOC_AXI_CLK>,
+				 <&clock_camcc CAM_CC_IFE_1_AXI_CLK>;
+			clock-names = "camera_ahb",
+				      "camera_axi",
+				      "soc_ahb_clk",
+				      "cpas_ahb_clk",
+				      "slow_ahb_clk_src",
+				      "ife_clk",
+				      "ife_clk_src",
+				      "camnoc_axi_clk",
+				      "ife_axi_clk";
+			clock-rates = <0 0 0 0 0 0 404000000 0 0>,
+				      <0 0 0 0 0 0 480000000 0 0>,
+				      <0 0 0 0 0 0 600000000 0 0>;
+			clock-cntl-level = "svs", "svs_l1", "turbo";
+			src-clock-name = "ife_clk_src";
+			clock-control-debugfs = "true";
+			clock-names-option = "ife_dsp_clk";
+			clocks-option = <&clock_camcc CAM_CC_IFE_1_DSP_CLK>;
+			clock-rates-option = <600000000>;
+			status = "okay";
+		};
+
+		cam_csid_lite: csid-lite@acc8000 {
+			compatible = "qcom,csid-lite170";
+			reg = <0 0x0acc8000 0 0x1000>;
+			reg-names = "csid-lite";
+			reg-cam-base = <0xc8000>;
+			interrupts = <GIC_SPI 468 IRQ_TYPE_EDGE_RISING>;
+			interrupt-names = "csid-lite";
+			cell-index = <2>;
+			power-domains = <&clock_camcc TITAN_TOP_GDSC>;
+			qcom,skip-probe-power-domain-cycle;
+			clocks = <&gcc GCC_CAMERA_AHB_CLK>,
+				 <&gcc GCC_CAMERA_AXI_CLK>,
+				 <&clock_camcc CAM_CC_SOC_AHB_CLK>,
+				 <&clock_camcc CAM_CC_CPAS_AHB_CLK>,
+				 <&clock_camcc CAM_CC_SLOW_AHB_CLK_SRC>,
+				 <&clock_camcc CAM_CC_IFE_LITE_CSID_CLK>,
+				 <&clock_camcc CAM_CC_IFE_LITE_CSID_CLK_SRC>,
+				 <&clock_camcc CAM_CC_IFE_LITE_CPHY_RX_CLK>,
+				 <&clock_camcc CAM_CC_CPHY_RX_CLK_SRC>,
+				 <&clock_camcc CAM_CC_IFE_LITE_CLK>,
+				 <&clock_camcc CAM_CC_IFE_LITE_CLK_SRC>,
+				 <&clock_camcc CAM_CC_CAMNOC_AXI_CLK>;
+			clock-names = "camera_ahb",
+				      "camera_axi",
+				      "soc_ahb_clk",
+				      "cpas_ahb_clk",
+				      "slow_ahb_clk_src",
+				      "ife_csid_clk",
+				      "ife_csid_clk_src",
+				      "ife_cphy_rx_clk",
+				      "cphy_rx_clk_src",
+				      "ife_clk",
+				      "ife_clk_src",
+				      "camnoc_axi_clk";
+			clock-rates = <0 0 0 0 0 0 384000000 0 0 0 404000000 0>,
+				      <0 0 0 0 0 0 538000000 0 0 0 600000000 0>;
+			clock-cntl-level = "svs", "turbo";
+			src-clock-name = "ife_csid_clk_src";
+			clock-control-debugfs = "true";
+			status = "okay";
+		};
+
+		cam_vfe_lite: vfe-lite@acc4000 {
+			compatible = "qcom,vfe-lite170";
+			reg = <0 0x0acc4000 0 0x4000>;
+			reg-names = "ife-lite";
+			reg-cam-base = <0xc4000>;
+			interrupts = <GIC_SPI 469 IRQ_TYPE_EDGE_RISING>;
+			interrupt-names = "ife-lite";
+			cell-index = <2>;
+			power-domains = <&clock_camcc TITAN_TOP_GDSC>;
+			qcom,skip-probe-power-domain-cycle;
+			clocks = <&gcc GCC_CAMERA_AHB_CLK>,
+				 <&gcc GCC_CAMERA_AXI_CLK>,
+				 <&clock_camcc CAM_CC_SOC_AHB_CLK>,
+				 <&clock_camcc CAM_CC_CPAS_AHB_CLK>,
+				 <&clock_camcc CAM_CC_SLOW_AHB_CLK_SRC>,
+				 <&clock_camcc CAM_CC_IFE_LITE_CLK>,
+				 <&clock_camcc CAM_CC_IFE_LITE_CLK_SRC>,
+				 <&clock_camcc CAM_CC_CAMNOC_AXI_CLK>;
+			clock-names = "camera_ahb",
+				      "camera_axi",
+				      "soc_ahb_clk",
+				      "cpas_ahb_clk",
+				      "slow_ahb_clk_src",
+				      "ife_clk",
+				      "ife_clk_src",
+				      "camnoc_axi_clk";
+			clock-rates = <0 0 0 0 0 0 404000000 0>,
+				      <0 0 0 0 0 0 480000000 0>,
+				      <0 0 0 0 0 0 600000000 0>;
+			clock-cntl-level = "svs", "svs_l1", "turbo";
+			src-clock-name = "ife_clk_src";
+			clock-control-debugfs = "true";
+			status = "okay";
+		};
+
+		cam_icp: cam-icp {
+			compatible = "qcom,cam-icp";
+			compat-hw-name = "qcom,a5", "qcom,bps";
+			num-a5 = <1>;
+			num-bps = <1>;
+			status = "okay";
+		};
+
+		cam_a5: qcom,a5@ac00000 {
+			compatible = "qcom,cam-a5";
+			reg = <0 0x0ac00000 0 0x6000>,
+			      <0 0x0ac10000 0 0x8000>,
+			      <0 0x0ac18000 0 0x3000>;
+			reg-names = "a5_qgic", "a5_sierra", "a5_csr";
+			reg-cam-base = <0x00000 0x10000 0x18000>;
+			interrupts = <GIC_SPI 463 IRQ_TYPE_EDGE_RISING>;
+			interrupt-names = "a5";
+			cell-index = <0>;
+			power-domains = <&clock_camcc TITAN_TOP_GDSC>;
+			qcom,skip-probe-power-domain-cycle;
+			clocks = <&gcc GCC_CAMERA_AHB_CLK>,
+				 <&gcc GCC_CAMERA_AXI_CLK>,
+				 <&clock_camcc CAM_CC_FAST_AHB_CLK_SRC>,
+				 <&clock_camcc CAM_CC_SOC_AHB_CLK>,
+				 <&clock_camcc CAM_CC_CPAS_AHB_CLK>,
+				 <&clock_camcc CAM_CC_CAMNOC_AXI_CLK>,
+				 <&clock_camcc CAM_CC_ICP_CLK>,
+				 <&clock_camcc CAM_CC_ICP_CLK_SRC>;
+			clock-names = "gcc_cam_ahb_clk",
+				      "gcc_cam_axi_clk",
+				      "soc_fast_ahb",
+				      "soc_ahb_clk",
+				      "cpas_ahb_clk",
+				      "camnoc_axi_clk",
+				      "icp_clk",
+				      "icp_clk_src";
+			clock-rates = <0 0 200000000 0 0 0 0 400000000>,
+				      <0 0 200000000 0 0 0 0 600000000>;
+			clock-cntl-level = "svs", "turbo";
+			fw_name = "CAMERA_ICP.elf";
+			ubwc-cfg = <0x7b 0x1ef>;
+			status = "okay";
+		};
+
+		cam_bps: qcom,bps {
+			compatible = "qcom,cam-bps";
+			reg = <0 0x0ac6f000 0 0x3000>;
+			reg-names = "bps_top";
+			reg-cam-base = <0x6f000>;
+			cell-index = <0>;
+			power-domains = <&clock_camcc BPS_GDSC>;
+			qcom,skip-probe-power-domain-cycle;
+			clocks = <&clock_camcc CAM_CC_BPS_AHB_CLK>,
+				 <&clock_camcc CAM_CC_BPS_AREG_CLK>,
+				 <&clock_camcc CAM_CC_BPS_AXI_CLK>,
+				 <&clock_camcc CAM_CC_BPS_CLK>,
+				 <&clock_camcc CAM_CC_BPS_CLK_SRC>;
+			clock-names = "bps_ahb_clk",
+				      "bps_areg_clk",
+				      "bps_axi_clk",
+				      "bps_clk",
+				      "bps_clk_src";
+			clock-rates = <0 0 0 0 404000000>,
+				      <0 0 0 0 480000000>,
+				      <0 0 0 0 600000000>,
+				      <0 0 0 0 600000000>;
+			clock-cntl-level = "svs", "svs_l1", "nominal", "turbo";
+			src-clock-name = "bps_clk_src";
+			clock-control-debugfs = "true";
+			status = "okay";
 		};
 
 		cam_req_mgr: cam-req-mgr {

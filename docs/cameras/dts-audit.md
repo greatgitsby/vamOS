@@ -205,6 +205,17 @@ Linux output. Commit `dde427c` reverts the enablement and boots as
 probe/power/reset path, not the SMMU alias, disabled node shape, or added
 `ife3` client name.
 
+The next active hardware checkpoint keeps CPAS CDM disabled and reintroduces
+only the openpilot-needed ISP/ICP blocks: `qcom,cam-isp`, CSID/VFE indices 0,
+1, and lite index 2, `qcom,cam-icp`, `qcom,a5`, and `qcom,bps`. These nodes use
+mainline CAMCC `power-domains`, but add `qcom,skip-probe-power-domain-cycle` so
+the recent `camera_kt` SOC helper does not briefly enable/disable the camera
+GDSCs during component bind. Runtime power-domain enablement remains unchanged;
+the property only avoids the probe-time cycle while the DTS hardware contract is
+being isolated. Validate this checkpoint with a kernel build, flash, 30-second
+serial `uname -a`, and a 30-second MDMA `profile-boot` before adding CCI,
+CSIPHY, or sensor nodes.
+
 ## Translation Notes
 
 - Add a downstream root compatible with `"qcom,camera_kt"`. The direct
@@ -259,7 +270,8 @@ probe/power/reset path, not the SMMU alias, disabled node shape, or added
    CPAS CDM again until the enabled probe path is fixed or instrumented; even the
    legacy `"ife"`-only client list fails in `70e1533`. After the enabled probe is
    boot-safe, add the recent openpilot-needed `ife3` client as its own checkpoint.
-9. Add ISP/ICP/BPS hardware nodes needed by openpilot streaming. Leave JPEG,
-   LRME, IPE, FD, OPE, TFE, SFE, and custom blocks out.
+9. Add ISP/ICP/BPS hardware nodes needed by openpilot streaming, with
+   `qcom,skip-probe-power-domain-cycle` on power-domain-backed hardware nodes.
+   Leave JPEG, LRME, IPE, FD, OPE, TFE, SFE, and custom blocks out.
 10. Add CCI, CSIPHY0-2, MCLK/reset/VANA pinctrl, fixed camera regulators, and
    three sensor slots. Verify chip-ID probing with the standalone camera test.

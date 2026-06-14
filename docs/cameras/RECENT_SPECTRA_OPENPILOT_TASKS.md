@@ -270,6 +270,13 @@ Parallel from day one:
     and boots on mici as `6.18.0-vamos-dde427c`.
   - Conclusion: the SMMU alias and disabled DT node are safe; the failure is the
     enabled CPAS CDM probe/power/reset path, not the extra `ife3` client name.
+- The next active hardware checkpoint keeps CPAS CDM disabled and adds only the
+  openpilot-needed ISP/ICP/BPS blocks. It also adds
+  `kernel/spectra-qcom/patches/0002-cam-soc-skip-probe-power-cycle.patch`, which
+  lets DTS nodes opt out of the recent `camera_kt` probe-time GDSC
+  enable/disable pulse via `qcom,skip-probe-power-domain-cycle`. Runtime power
+  enablement is unchanged; this is a boot isolation guard for the hardware-node
+  bind path.
 
 ## 2. Lane P0 - Source Submodule And Audit
 
@@ -600,6 +607,9 @@ Work:
   seen in `a26a734`. Commit `dde427c` restores the booting disabled-node state.
   Next CPAS CDM work should fix or instrument the enabled probe/power/reset
   path before adding `ife3` back.
+- Add ISP/ICP/BPS as the next active checkpoint, but set
+  `qcom,skip-probe-power-domain-cycle` on each power-domain-backed hardware node
+  so component bind does not pulse the camera GDSCs during boot.
 - Do not add JPEG, LRME, FD, OPE, TFE, SFE, custom, IPE, or fourth-camera nodes
   unless openpilot starts consuming them.
 - Keep upstream mainline `camss` and `cci` disabled to avoid register overlap.
@@ -619,6 +629,11 @@ cd /home/trey/claudes/vamOS
 dtc -I dtb -O dts \
   kernel/linux/out/arch/arm64/boot/dts/qcom/sdm845-comma-mici.dtb \
   >/tmp/vamos-mici-dtb-dump.dts
+/home/trey/.agents/skills/mici/scripts/mdma.py reboot-qdl
+./vamos flash kernel
+/home/trey/.agents/skills/mici/scripts/mdma.py reboot
+/home/trey/.agents/skills/mici/scripts/mdma.py bash --wait 180 --timeout 30 'uname -a'
+timeout 30s /home/trey/.agents/skills/mici/scripts/mdma.py profile-boot
 git status --short
 ```
 
