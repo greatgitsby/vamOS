@@ -95,6 +95,18 @@ An earlier in-driver bare-metal injection (raw CCI read inside cam_sensor_match_
 inconclusive because it raced camera_kt's live IRQ handler (status0 read back 0) and
 corrupted master state. The stock driver avoids this by owning its own IRQ + init.
 
+## MCLK is MANDATORY for the ACK (proven 2026-06-15)
+
+Patched the WORKING legacy kernel to skip the sensor MCLK clk_enable -> probe dropped
+to 0/3 with the same NACK. So the OS04C10 will NOT ACK its I2C address without MCLK
+running. This makes MCLK the prime suspect for any subtle difference. BUT: on mainline
+MCLK reads 24.000 MHz, RCG cfg/M/N/D byte-identical (cfg=0x2113, M=1, N=0xFE, D=0xFD),
+PLL2=960MHz / pll2_out_even=480MHz (identical to legacy), enable_count=1 continuous
+through the probe, and the pad toggles. Every MCLK register/PLL measured is identical to
+legacy. So MCLK is necessary, and is present and correct on mainline by every available
+measurement -- yet the sensor still NACKs. (A logic-analyzer on the MCLK line is the only
+way left to prove the analog clock the sensor actually receives matches legacy.)
+
 ## Other live leads if the stock driver also NACKs (→ DT/SoC, not driver)
 
 - A logic-analyzer/scope trace of SDA/SCL/MCLK comparing legacy vs mainline edges
