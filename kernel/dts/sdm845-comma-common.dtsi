@@ -777,14 +777,19 @@
 			cam_vdig-supply = <&camera_rear_ldo>;
 			cam_clk-supply = <&titan_top_gdsc>;
 			/*
-			 * No power-domains here: TITAN_TOP_GDSC is brought up via
-			 * the cam_clk regulator at the MCLK step, exactly like the
-			 * legacy AGNOS 4.9 sensor nodes (which have zero
-			 * power-domains). Adding a genpd power-domain made the
-			 * camera_kt driver pm_runtime_get_sync() the GDSC at the
-			 * first regulator (VIO) step, perturbing the sensor's
-			 * power-on-reset ordering and causing an I2C address NACK.
+			 * power-domains IS required on mainline: the MCLK branch
+			 * (cam_cc_mclk0_clk) is gated by CAMCC under TITAN_TOP_GDSC,
+			 * and clk_prepare_enable() returns -EBUSY unless the genpd
+			 * is powered (pm_runtime_get_sync) before the MCLK step.
+			 * Without it the MCLK enable fails and the power-up aborts
+			 * before reset-deassert, leaving the sensor held in reset
+			 * (I2C NACK). Patch 0028 defers the genpd enable to the MCLK
+			 * step so it is on before clk_prepare_enable but not pulsed
+			 * at the first (VIO) regulator step. Legacy 4.9 needs no
+			 * power-domains because its 4.9 clk framework gated the MCLK
+			 * branch via the cam_clk regulator instead.
 			 */
+			power-domains = <&clock_camcc TITAN_TOP_GDSC>;
 			regulator-names = "cam_vio", "cam_vana", "cam_vdig", "cam_clk";
 			rgltr-cntrl-support;
 			rgltr-min-voltage = <0 3312000 1050000 0>;
@@ -827,14 +832,19 @@
 			cam_vdig-supply = <&camera_rear_ldo>;
 			cam_clk-supply = <&titan_top_gdsc>;
 			/*
-			 * No power-domains here: TITAN_TOP_GDSC is brought up via
-			 * the cam_clk regulator at the MCLK step, exactly like the
-			 * legacy AGNOS 4.9 sensor nodes (which have zero
-			 * power-domains). Adding a genpd power-domain made the
-			 * camera_kt driver pm_runtime_get_sync() the GDSC at the
-			 * first regulator (VIO) step, perturbing the sensor's
-			 * power-on-reset ordering and causing an I2C address NACK.
+			 * power-domains IS required on mainline: the MCLK branch
+			 * (cam_cc_mclk0_clk) is gated by CAMCC under TITAN_TOP_GDSC,
+			 * and clk_prepare_enable() returns -EBUSY unless the genpd
+			 * is powered (pm_runtime_get_sync) before the MCLK step.
+			 * Without it the MCLK enable fails and the power-up aborts
+			 * before reset-deassert, leaving the sensor held in reset
+			 * (I2C NACK). Patch 0028 defers the genpd enable to the MCLK
+			 * step so it is on before clk_prepare_enable but not pulsed
+			 * at the first (VIO) regulator step. Legacy 4.9 needs no
+			 * power-domains because its 4.9 clk framework gated the MCLK
+			 * branch via the cam_clk regulator instead.
 			 */
+			power-domains = <&clock_camcc TITAN_TOP_GDSC>;
 			regulator-names = "cam_vio", "cam_vana", "cam_vdig", "cam_clk";
 			rgltr-cntrl-support;
 			rgltr-min-voltage = <0 3312000 1050000 0>;
@@ -875,14 +885,19 @@
 			cam_vdig-supply = <&camera_rear_ldo>;
 			cam_clk-supply = <&titan_top_gdsc>;
 			/*
-			 * No power-domains here: TITAN_TOP_GDSC is brought up via
-			 * the cam_clk regulator at the MCLK step, exactly like the
-			 * legacy AGNOS 4.9 sensor nodes (which have zero
-			 * power-domains). Adding a genpd power-domain made the
-			 * camera_kt driver pm_runtime_get_sync() the GDSC at the
-			 * first regulator (VIO) step, perturbing the sensor's
-			 * power-on-reset ordering and causing an I2C address NACK.
+			 * power-domains IS required on mainline: the MCLK branch
+			 * (cam_cc_mclk0_clk) is gated by CAMCC under TITAN_TOP_GDSC,
+			 * and clk_prepare_enable() returns -EBUSY unless the genpd
+			 * is powered (pm_runtime_get_sync) before the MCLK step.
+			 * Without it the MCLK enable fails and the power-up aborts
+			 * before reset-deassert, leaving the sensor held in reset
+			 * (I2C NACK). Patch 0028 defers the genpd enable to the MCLK
+			 * step so it is on before clk_prepare_enable but not pulsed
+			 * at the first (VIO) regulator step. Legacy 4.9 needs no
+			 * power-domains because its 4.9 clk framework gated the MCLK
+			 * branch via the cam_clk regulator instead.
 			 */
+			power-domains = <&clock_camcc TITAN_TOP_GDSC>;
 			regulator-names = "cam_vio", "cam_vana", "cam_vdig", "cam_clk";
 			rgltr-cntrl-support;
 			rgltr-min-voltage = <0 3312000 1050000 0>;

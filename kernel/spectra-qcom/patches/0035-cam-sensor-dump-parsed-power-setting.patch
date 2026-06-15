@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Trey <trey@comma.ai>
+Date: Mon, 15 Jun 2026 18:00:00 +0000
+Subject: cam-sensor: dump parsed power_setting array before power-up
+
+Diagnostic: print every parsed power_setting[i] (seq_type/seq_val/config_val/
+delay) before the power-up loop, to confirm whether the openpilot probe packet's
+RESET-deassert (seq=8 config=1) step survives parsing on the recent camera_kt
+UAPI. Legacy 4.9 parses 6 steps ending in RESET-high+34ms; mainline runs only 5
+and never deasserts reset during power-up. Temporary; remove once parse is fixed.
+---
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_utils/cam_sensor_util.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_utils/cam_sensor_util.c
+index 565e745..c09d916 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_utils/cam_sensor_util.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_utils/cam_sensor_util.c
+@@ -2441,6 +2441,16 @@ int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
+ 		soc_info->num_clk, num_vreg, no_gpio,
+ 		ctrl->cam_pinctrl_status);
+ 
++	pr_emerg("vamos-cam-sensor: power_setting DUMP size=%d\n",
++		ctrl->power_setting_size);
++	for (index = 0; index < ctrl->power_setting_size; index++) {
++		pr_emerg("vamos-cam-sensor: power_setting[%d] seq_type=%d seq_val=%d config_val=%ld delay=%d\n",
++			index, ctrl->power_setting[index].seq_type,
++			ctrl->power_setting[index].seq_val,
++			ctrl->power_setting[index].config_val,
++			ctrl->power_setting[index].delay);
++	}
++
+ 	for (index = 0; index < ctrl->power_setting_size; index++) {
+ 		CAM_DBG(CAM_SENSOR, "index: %d", index);
+ 		power_setting = &ctrl->power_setting[index];
+-- 
+2.43.0
