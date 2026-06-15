@@ -74,3 +74,49 @@ block not being fully alive despite correct rails/MCLK/reset, i.e. an SoC-side e
 the CCI digital path doesn't capture. Next: diff the CPAS/platform-resource enable.
 
 Diagnostic patches: 0035 (power_setting dump), 0036 (queue-word dump).
+
+## CPAS / platform-resource / clock-vote diff — also matches
+
+Mapped both drivers' CCI block enable path (cam_cci_soc.c + cam_soc_util):
+- **Clock vote:** both `cam_soc_util_enable_platform_resource(..., CAM_LOWSVS_VOTE, ...)`
+  (vote=2). Live: `vote=2 applied_src=37500000`. Match.
+- **CPAS:** both call `cam_cpas_start` with AHB `CAM_SVS_VOTE` (patch 0006 raised
+  mainline LOWSVS→SVS to match legacy) + default AXI bw. Match.
+- **CCI DT node clocks:** identical 6 clocks (camnoc_axi/soc_ahb/slow_ahb/cpas_ahb/
+  cci_clk/cci_clk_src), identical rates (`...37500000`), `clock-cntl-level="lowsvs"`,
+  `src-clock-name="cci_clk_src"`. Match.
+- **CCI pad pinctrl:** legacy `drive-strength=<2>` (2mA) + `bias-pull-up`; mainline
+  live pad read `pull=3 (pull-up) drv=0` (=2mA). Match at the register.
+- Only CCI-node difference: GDSC via regulator `gdscr-supply` (legacy) vs genpd
+  `power-domains` (mainline) — both leave TITAN_TOP powered (registers writable,
+  pads toggle). Not material.
+
+## CCI init/reset lifecycle — a real off-by-one, but NOT the NACK cause
+
+Clean-buffer capture of the full 3-sensor probe shows the openpilot probe opens CCI
+per sensor per master. Two quirks found:
+1. The **very first read** (sid=0x36, master 0) fires with `ref=1` and **no preceding
+   CCI INIT/reset** — a CCI open leaked before the probe, so `ref_count` was already 1
+   and `cam_cci_init_master`'s reset (guarded by `is_initilized` / `ref_count==1`) was
+   skipped for that first read.
+2. Subsequent reads **do** get a full `init_master reset all (0xf73f3f7)` + `reset
+   done` before the read (confirmed in the log).
+
+But reads #2 and #3, which **do** get a fresh master reset, **NACK identically** to
+read #1. So the missing-first-reset is a real lifecycle bug worth fixing for
+correctness, but it is **not** the cause of the NACK — a freshly-reset master with the
+identical queue still NACKs the address.
+
+## Bottom line
+
+Every software-controllable layer — power, genpd, MCLK, reset+settle, CCI
+init+reset+state, all clocks, CPAS/AHB/AXI votes, timing registers, IRQ masks, pad
+drive/pull, and the literal I2C command words — now provably matches the working
+legacy 4.9 on the same board, and the OS04C10 still NACKs its address on mainline
+only. The difference is not anything the kernel programs into the CCI or the clock/
+power tree. Open frontier: a sensor-side or SoC-side precondition that legacy
+establishes outside the per-probe CCI path (e.g. a one-time sensor/SoC init the legacy
+stack does at boot/camerad-start that the standalone probe inherits on legacy but not
+on mainline), or a hardware-version-gated CCI behavior. Recommend a focused diff of
+what the legacy *system* (boot + camerad init) does to the sensor/CCI once, before any
+probe, that the mainline image does not.
