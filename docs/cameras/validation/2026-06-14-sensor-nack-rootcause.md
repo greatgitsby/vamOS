@@ -150,13 +150,54 @@ SoC": an address transaction reaches the bus and the sensor does not ACK.
   evidence argues against this, but it is not completely impossible without
   measuring at the module.
 
+## Update - 2026-06-15 (kernel #192, bf1532f): pre-CCI bitbang + full pad/clock proof
+
+Re-enabled the pre-CCI software bitbang scan (patch 0034) and measured every
+physical precondition live during the CCI read:
+
+- **MCLK**: `cam_cc_mclk0_clk = 24,000,000 Hz, enable=1` during the powered hold;
+  PLL2 locked (960 MHz / out_even 480 MHz); pad gpio13 `mux=1 (cam_mclk)` toggling
+  (`mclk-pad ... transitions=134..146`). MCLK is genuinely 24 MHz at the pad.
+- **Rails**: lvs1 (cam_vio/DOVDD) = 1800 mV always-on; bob (cam_vana) = 3328 mV,
+  80 mA; camera_rear_ldo (cam_vdig) = 1050 mV. All enabled, correct voltages.
+- **CCI pads during the read**: gpio17/18 = `ctl=0x7 mux=1 (cci_i2c) pull=3 (pull-up)
+  drv=0`. SDA/SCL physically clock a full transaction:
+  `sda_transitions=31 scl_transitions=80` (≈ addr-w + reg-hi + reg-lo + addr-r +
+  data, all 9-bit). SCL timing register = 0x00260038 (THIGH 38 / TLOW 56 =
+  fast-mode 400 kHz, calibrated for cci_clk_src=37.5 MHz, which is the live rate).
+- Result: still `M0_Q1 NACK ERROR: 0x10000000`, `read id 0x0`.
+
+**Bitbang scan (software I2C, CCI controller bypassed):** full 0x03-0x77 address
+scan on both masters returns `hits=0`; sensor address 0x6c NACKs write+read; retries
+after reset-low, reset-pulse, and vana-low all NACK (`chip=0xffff`). HOWEVER this
+test is partly self-invalidating: when the bitbang `gpio_request`s the CCI pads,
+mainline TLMM auto-muxes them to GPIO with `pull=1` (pull-DOWN), removing the I2C
+bus pull-ups, so a bitbang NACK does not cleanly implicate the sensor.
+
+### Decisive framing
+
+The clean, valid signal is the **CCI-path** read: pads correctly `cci_i2c`-muxed with
+pull-up, a complete 400 kHz transaction clocked out, 24 MHz MCLK, all three rails at
+spec, reset deasserted - and the slave still does not ACK. The **same board boots the
+legacy AGNOS 4.9 kernel and probes 3/3 OS04C10 sensors** (`spectra_legacy_probe_all_legacybin.log`).
+Every kernel-visible precondition is identical/correct on mainline, so the divergence
+is a behavior the legacy 4.9 CCI/sensor path performs that the recent camera_kt path
+does not - not a DTS power/pinctrl gap (those are now proven correct at the pad).
+
 ## Next actions
 
-1. Compare legacy `cam_cci_read()` / IRQ / master-init code against the patched
-   recent driver at the command-word and register-write level.
-2. Capture the exact legacy CCI read queue programming for a successful
-   OS04C10 chip-ID read, then diff it against the #191 mainline breadcrumb.
-3. Keep the current power/pinctrl DTS shape; do not chase broad DT changes unless
-   a new measurement contradicts the powered-hold snapshots.
-4. Once the NACK clears, remove the temporary verbose breadcrumbs and proceed to
-   CSIPHY/IFE frame streaming with `spectra_camera_test`.
+1. **Flash legacy 4.9 (`vamos flash kernel --legacy`), instrument its `cam_cci_read`
+   register writes** (SET_PARAM/queue words + SCL_CTL/MISC_CTL + the IRQ status it
+   sees) for a successful 0x6c chip-ID read. Diff against the mainline #192 CCI
+   register breadcrumbs word-for-word. This is the experiment that will localize it.
+2. Suspect list to confirm against the legacy capture, in order:
+   - CCI **MISC_CTL / THZ / glitch-filter / half-cycle** programming differences.
+   - SET_PARAM **id_map / retries** field or a missing second SET_PARAM.
+   - The recent driver's **report_q vs rd_done completion** path masking a partial
+     transaction (status0=0x10000000 with cur=0x2 exec=0x5 read_level=0x0 - the
+     queue executed 5 words but read_level 0).
+   - I2C **freq mode actually programmed** (openpilot requests FAST=1; breadcrumb
+     forces STANDARD on the client but SCL_CTL shows fast-mode values - reconcile).
+3. Keep the current power/pinctrl DTS shape; it is proven correct at the pad.
+4. Once the NACK clears, disable the bitbang scan (revert 0034 effect), strip the
+   temporary breadcrumbs, and proceed to CSIPHY/IFE frame streaming.
