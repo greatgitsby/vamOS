@@ -107,6 +107,25 @@ read #1. So the missing-first-reset is a real lifecycle bug worth fixing for
 correctness, but it is **not** the cause of the NACK — a freshly-reset master with the
 identical queue still NACKs the address.
 
+## Cold-boot + clock-topology checks (2026-06-15, deep dive)
+
+- **Cold-boot first-touch:** on legacy, `spectra_camera_test_legacy` as the *very first*
+  camera touch after a cold boot (no camerad, no warm-up) probes **3/3 OK**. So the
+  legacy success is NOT a one-time userspace precondition — it is established by the
+  legacy *kernel* alone. Confirms the divergence is kernel-side.
+- **CAMCC clock topology — matches during active use.** A first idle reading showed
+  mainline `cci_clk_src=19.2 MHz/bi_tcxo` (vs legacy 37.5/PLL0) — but that is just the
+  **parked** state. Tight-sampled through the active probe window, mainline
+  `cci_clk_src` is **37,500,000 Hz from cam_cc_pll0_out_even** continuously while a read
+  is in flight (parks back to 19.2/TCXO only when idle). mclk0_src = 24 MHz from
+  pll2_out_even on both. So the clock the CCI runs at during the transaction matches
+  legacy. (Initial 19.2 reading was a false alarm — verified and corrected.)
+- **titan_top GDSCR config bits differ** (informational): legacy idle `0x0022F001` vs
+  mainline `0x00282001`; mainline shows PWR_ON (bit31) = 1 during the probe
+  (`0xF8282000`), so titan_top IS powered when active. The differing mid bits
+  (legacy `0xF000` in [15:12] vs mainline `0x2000`) are GDSC power-up-delay /
+  enable-rest fields, not obviously tied to an I2C address ACK.
+
 ## Bottom line
 
 Every software-controllable layer — power, genpd, MCLK, reset+settle, CCI
