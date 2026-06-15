@@ -1,0 +1,24 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Trey <trey@comma.ai>
+Date: Mon, 15 Jun 2026 19:30:00 +0000
+Subject: cam-cci: dump every i2c queue word written to LOAD_DATA
+
+Diagnostic: print each CCI queue command word (SET_PARAM/LOCK/WRITE_DISABLE_P/
+READ/UNLOCK) as it is loaded, to byte-compare the exact transaction mainline
+programs vs the working legacy 4.9 read. Temporary.
+---
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_core.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_core.c
+index 71993fd..3912579 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_core.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_core.c
+@@ -331,6 +331,8 @@ static int32_t cam_cci_write_i2c_queue(struct cci_device *cci_dev,
+ 	CAM_DBG(CAM_CCI, "CCI_I2C_M0_Q0_LOAD_DATA_ADDR:val 0x%x:0x%x",
+ 		CCI_I2C_M0_Q0_LOAD_DATA_ADDR +
+ 		reg_offset, val);
++	pr_emerg("vamos-cam-cci: qword master=%d queue=%d val=0x%08x\n",
++		master, queue, val);
+ 	cam_io_w_mb(val, base + CCI_I2C_M0_Q0_LOAD_DATA_ADDR +
+ 		reg_offset);
+ 
+-- 
+2.43.0

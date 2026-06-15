@@ -1,0 +1,9 @@
+# CCI queue command words: LEGACY (ACK 3/3) vs MAINLINE (NACK 3/3) — IDENTICAL
+# OS04C10 chip-id read, sid=0x36, reg=0x300a, num_byte=2
+#
+# word              legacy        mainline
+# SET_PARAM         0x00030361    0x00030361
+# LOCK              0x00000006    0x00000006
+# WRITE_DISABLE_P   0x000a302b    0x000a302b
+# READ              0x0000002a    0x0000002a
+# UNLOCK            0x00000007    0x00000007
