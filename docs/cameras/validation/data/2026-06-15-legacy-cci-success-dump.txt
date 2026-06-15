@@ -1,0 +1,18 @@
+[  308.065257] vamos-legacy-cci: irq status0=0x01000000 status1=0x00000000 m0_rd_buf=0x0 m1_rd_buf=0x0
+[  308.065377] vamos-legacy-cci: set_clk_param master=0 freq_mode=1 scl_ctl=0x00260038 sda0=0x00280028 sda1=0x00160023 sda2=0x0000003e misc=0x00000063 thigh=38 tlow=56 stretch=0 trdhld=6 tsp=3
+[  308.065441] vamos-legacy-cci: read master=0 queue=1 sid=0x36 retries=3 id_map=0 freq_mode=1 set_param=0x00030361 addr=0x300a addr_type=2 num_byte=2 scl_ctl=0x00260038 misc_ctl=0x00000063
+[  308.065507] vamos-legacy-cci: queue-ready master=0 queue=1 cur_word_cnt=5 qstart=0x2 scl_ctl=0x00260038 misc_ctl=0x00000063 exp_words=1
+[  308.065713] vamos-legacy-cci: irq status0=0x00000001 status1=0x00000000 m0_rd_buf=0x1 m1_rd_buf=0x0
+[  308.065791] vamos-legacy-cci: read-done master=0 sid=0x36 read_words=1 exp_words=1
+[  308.134922] vamos-legacy-cci: irq status0=0x01000000 status1=0x00000000 m0_rd_buf=0x0 m1_rd_buf=0x0
+[  308.135056] vamos-legacy-cci: set_clk_param master=0 freq_mode=1 scl_ctl=0x00260038 sda0=0x00280028 sda1=0x00160023 sda2=0x0000003e misc=0x00000063 thigh=38 tlow=56 stretch=0 trdhld=6 tsp=3
+[  308.135134] vamos-legacy-cci: read master=0 queue=1 sid=0x10 retries=3 id_map=0 freq_mode=1 set_param=0x00030101 addr=0x300a addr_type=2 num_byte=2 scl_ctl=0x00260038 misc_ctl=0x00000063
+[  308.135215] vamos-legacy-cci: queue-ready master=0 queue=1 cur_word_cnt=5 qstart=0x2 scl_ctl=0x00260038 misc_ctl=0x00000063 exp_words=1
+[  308.135439] vamos-legacy-cci: irq status0=0x00000001 status1=0x00000000 m0_rd_buf=0x1 m1_rd_buf=0x0
+[  308.135542] vamos-legacy-cci: read-done master=0 sid=0x10 read_words=1 exp_words=1
+[  308.205114] vamos-legacy-cci: irq status0=0x01000000 status1=0x00000000 m0_rd_buf=0x0 m1_rd_buf=0x0
+[  308.205225] vamos-legacy-cci: set_clk_param master=1 freq_mode=1 scl_ctl=0x00260038 sda0=0x00280028 sda1=0x00160023 sda2=0x0000003e misc=0x00000063 thigh=38 tlow=56 stretch=0 trdhld=6 tsp=3
+[  308.205279] vamos-legacy-cci: read master=1 queue=1 sid=0x36 retries=3 id_map=0 freq_mode=1 set_param=0x00030361 addr=0x300a addr_type=2 num_byte=2 scl_ctl=0x00260038 misc_ctl=0x00000063
+[  308.205336] vamos-legacy-cci: queue-ready master=1 queue=1 cur_word_cnt=5 qstart=0x8 scl_ctl=0x00260038 misc_ctl=0x00000063 exp_words=1
+[  308.205535] vamos-legacy-cci: irq status0=0x00001000 status1=0x00000000 m0_rd_buf=0x0 m1_rd_buf=0x1
+[  308.205609] vamos-legacy-cci: read-done master=1 sid=0x36 read_words=1 exp_words=1
