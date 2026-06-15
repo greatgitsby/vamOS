@@ -1,0 +1,2053 @@
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_core.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_core.c
+index eedfe00b8..f4b679de9 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_core.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_core.c
+@@ -218,9 +218,18 @@ void cam_cci_dump_registers(struct cci_device *cci_dev,
+ 		!(dump_en & CAM_CCI_TIMEOUT_DUMP_EN)) {
+ 		CAM_DBG(CAM_CCI,
+ 			"Nack and Timeout dump is not enabled");
+-		return;
+-	}
+-
++		pr_emerg("vamos-cam-cci: forcing register dump cci=%d master=%d queue=%d dump_en=0x%x\n",
++			cci_dev->soc_info.index, master, queue, dump_en);
++	}
++
++	pr_emerg("vamos-cam-cci: dump begin cci=%d master=%d queue=%d base=%pK hw=0x%x state=%d ref=%u active0=%u active1=%u status0=%d status1=%d\n",
++		cci_dev->soc_info.index, master, queue, base,
++		cci_dev->hw_version, cci_dev->cci_state,
++		cci_dev->ref_count,
++		cci_dev->master_active_slave[MASTER_0],
++		cci_dev->master_active_slave[MASTER_1],
++		cci_dev->cci_master_info[MASTER_0].status,
++		cci_dev->cci_master_info[MASTER_1].status);
+ 	CAM_INFO(CAM_CCI, "**** CCI:%d register dump ****",
+ 		cci_dev->soc_info.index);
+ 
+@@ -231,6 +240,8 @@ void cam_cci_dump_registers(struct cci_device *cci_dev,
+ 		read_val = cam_io_r_mb(base + reg_offset);
+ 		CAM_INFO(CAM_CCI, "offset = 0x%X value = 0x%X",
+ 			reg_offset, read_val);
++		pr_emerg("vamos-cam-cci: dump top off=0x%x val=0x%x\n",
++			reg_offset, read_val);
+ 	}
+ 
+ 	/* CCI Master registers */
+@@ -244,6 +255,8 @@ void cam_cci_dump_registers(struct cci_device *cci_dev,
+ 		read_val = cam_io_r_mb(base + reg_offset);
+ 		CAM_INFO(CAM_CCI, "offset = 0x%X value = 0x%X",
+ 			reg_offset, read_val);
++		pr_emerg("vamos-cam-cci: dump master%d off=0x%x val=0x%x\n",
++			master, reg_offset, read_val);
+ 	}
+ 
+ 	/* CCI Master Queue registers */
+@@ -255,6 +268,8 @@ void cam_cci_dump_registers(struct cci_device *cci_dev,
+ 		read_val = cam_io_r_mb(base + reg_offset);
+ 		CAM_INFO(CAM_CCI, "offset = 0x%X value = 0x%X",
+ 			reg_offset, read_val);
++		pr_emerg("vamos-cam-cci: dump master%d queue%d off=0x%x val=0x%x\n",
++			master, queue, reg_offset, read_val);
+ 	}
+ 
+ 	/* CCI Interrupt registers */
+@@ -264,7 +279,11 @@ void cam_cci_dump_registers(struct cci_device *cci_dev,
+ 		read_val = cam_io_r_mb(base + reg_offset);
+ 		CAM_INFO(CAM_CCI, "offset = 0x%X value = 0x%X",
+ 			reg_offset, read_val);
++		pr_emerg("vamos-cam-cci: dump irq off=0x%x val=0x%x\n",
++			reg_offset, read_val);
+ 	}
++	pr_emerg("vamos-cam-cci: dump end cci=%d master=%d queue=%d\n",
++		cci_dev->soc_info.index, master, queue);
+ }
+ 
+ static uint32_t cam_cci_wait(struct cci_device *cci_dev,
+@@ -1317,6 +1336,8 @@ static int32_t cam_cci_read(struct v4l2_subdev *sd,
+ 		master, queue);
+ 	if (rc < 0) {
+ 		CAM_ERR(CAM_CCI, "Initial validataion failed rc %d", rc);
++		pr_emerg("vamos-cam-cci: read validate failed master=%d queue=%d rc=%d\n",
++			master, queue, rc);
+ 		goto rel_mutex_q;
+ 	}
+ 
+@@ -1415,6 +1436,11 @@ static int32_t cam_cci_read(struct v4l2_subdev *sd,
+ 
+ 	if (!wait_for_completion_timeout(
+ 		&cci_dev->cci_master_info[master].rd_done, CCI_TIMEOUT)) {
++		pr_emerg("vamos-cam-cci: read timeout master=%d queue=%d sid=0x%x status=%d irq0=0x%x irq1=0x%x\n",
++			master, queue, c_ctrl->cci_info->sid,
++			cci_dev->cci_master_info[master].status,
++			cam_io_r_mb(base + CCI_IRQ_STATUS_0_ADDR),
++			cam_io_r_mb(base + CCI_IRQ_STATUS_1_ADDR));
+ 		cam_cci_dump_registers(cci_dev, master, queue);
+ 
+ 		rc = -ETIMEDOUT;
+@@ -1430,6 +1456,7 @@ static int32_t cam_cci_read(struct v4l2_subdev *sd,
+ 	if (cci_dev->cci_master_info[master].status) {
+ 		pr_emerg("vamos-cam-cci: read status error master=%d status=0x%x slave=0x%x\n",
+ 			master, cci_dev->cci_master_info[master].status, c_ctrl->cci_info->sid << 1);
++		cam_cci_dump_registers(cci_dev, master, queue);
+ 		CAM_ERR(CAM_CCI, "ERROR with Slave 0x%x:",
+ 			(c_ctrl->cci_info->sid << 1));
+ 		rc = -EINVAL;
+@@ -1443,6 +1470,10 @@ static int32_t cam_cci_read(struct v4l2_subdev *sd,
+ 	if (read_words != exp_words) {
+ 		CAM_ERR(CAM_CCI, "read_words = %d, exp words = %d",
+ 			read_words, exp_words);
++		pr_emerg("vamos-cam-cci: read word mismatch master=%d queue=%d read=%d exp=%d buf_level=0x%x\n",
++			master, queue, read_words, exp_words,
++			cam_io_r_mb(base + CCI_I2C_M0_READ_BUF_LEVEL_ADDR +
++				master * 0x100));
+ 		memset(read_cfg->data, 0, read_cfg->num_byte);
+ 		rc = -EINVAL;
+ 		goto rel_mutex_q;
+@@ -1469,7 +1500,18 @@ static int32_t cam_cci_read(struct v4l2_subdev *sd,
+ 		}
+ 		read_words--;
+ 	}
++	pr_emerg("vamos-cam-cci: read success master=%d queue=%d sid=0x%x addr=0x%x num=%u data0=0x%x data1=0x%x rc=%d\n",
++		master, queue, c_ctrl->cci_info->sid, read_cfg->addr,
++		read_cfg->num_byte,
++		read_cfg->num_byte > 0 ? read_cfg->data[0] : 0,
++		read_cfg->num_byte > 1 ? read_cfg->data[1] : 0,
++		rc);
+ rel_mutex_q:
++	pr_emerg("vamos-cam-cci: read exit master=%d queue=%d sid=0x%x addr=0x%x rc=%d status=%d freq_ref_before=%d\n",
++		master, queue, c_ctrl->cci_info->sid,
++		read_cfg ? read_cfg->addr : 0, rc,
++		cci_dev->cci_master_info[master].status,
++		cci_dev->cci_master_info[master].freq_ref_cnt);
+ 	mutex_unlock(&cci_dev->cci_master_info[master].mutex_q[queue]);
+ 
+ 	spin_lock(&cci_dev->cci_master_info[master].freq_cnt_lock);
+@@ -1824,7 +1866,17 @@ static int32_t cam_cci_release(struct v4l2_subdev *sd,
+ 
+ 	cci_dev = v4l2_get_subdevdata(sd);
+ 
++	pr_emerg("vamos-cam-cci: release enter cci=%d master=%d ref=%u state=%d active=%u\n",
++		cci_dev ? cci_dev->soc_info.index : -1, master,
++		cci_dev ? cci_dev->ref_count : 0,
++		cci_dev ? cci_dev->cci_state : -1,
++		cci_dev ? cci_dev->master_active_slave[master] : 0);
+ 	rc = cam_cci_soc_release(cci_dev, master);
++	pr_emerg("vamos-cam-cci: release exit cci=%d master=%d rc=%d ref=%u state=%d active=%u\n",
++		cci_dev ? cci_dev->soc_info.index : -1, master, rc,
++		cci_dev ? cci_dev->ref_count : 0,
++		cci_dev ? cci_dev->cci_state : -1,
++		cci_dev ? cci_dev->master_active_slave[master] : 0);
+ 	if (rc < 0) {
+ 		CAM_ERR(CAM_CCI, "Failed in releasing the cci: %d", rc);
+ 		return rc;
+@@ -1852,6 +1904,14 @@ static int32_t cam_cci_write(struct v4l2_subdev *sd,
+ 	}
+ 
+ 	master = c_ctrl->cci_info->cci_i2c_master;
++	pr_emerg("vamos-cam-cci: write enter cci=%d cmd=%d master=%d sid=0x%x size=%u addr_type=%u data_type=%u freq=%u retries=%u\n",
++		cci_dev->soc_info.index, c_ctrl->cmd, master,
++		c_ctrl->cci_info->sid,
++		c_ctrl->cfg.cci_i2c_write_cfg.size,
++		c_ctrl->cfg.cci_i2c_write_cfg.addr_type,
++		c_ctrl->cfg.cci_i2c_write_cfg.data_type,
++		c_ctrl->cci_info->i2c_freq_mode,
++		c_ctrl->cci_info->retries);
+ 
+ 	if (c_ctrl->cci_info->cci_i2c_master >= MASTER_MAX
+ 		|| c_ctrl->cci_info->cci_i2c_master < 0) {
+@@ -1897,6 +1957,9 @@ static int32_t cam_cci_write(struct v4l2_subdev *sd,
+ 		rc = -ENOIOCTLCMD;
+ 	}
+ 
++	pr_emerg("vamos-cam-cci: write exit cci=%d cmd=%d master=%d sid=0x%x rc=%d\n",
++		cci_dev->soc_info.index, c_ctrl->cmd, master,
++		c_ctrl->cci_info->sid, rc);
+ 	return rc;
+ }
+ 
+@@ -1928,6 +1991,14 @@ int32_t cam_cci_core_cfg(struct v4l2_subdev *sd,
+ 		return -EAGAIN;
+ 	}
+ 	CAM_DBG(CAM_CCI, "master = %d, cmd = %d", master, cci_ctrl->cmd);
++	pr_emerg("vamos-cam-cci: core_cfg enter cci=%d cmd=%d master=%d state=%d ref=%u status=%d sid=0x%x freq=%u retries=%u id_map=%u\n",
++		cci_dev->soc_info.index, cci_ctrl->cmd, master,
++		cci_dev->cci_state, cci_dev->ref_count,
++		cci_dev->cci_master_info[master].status,
++		cci_ctrl->cci_info->sid,
++		cci_ctrl->cci_info->i2c_freq_mode,
++		cci_ctrl->cci_info->retries,
++		cci_ctrl->cci_info->id_map);
+ 
+ 	switch (cci_ctrl->cmd) {
+ 	case MSM_CCI_INIT:
+@@ -1971,6 +2042,11 @@ int32_t cam_cci_core_cfg(struct v4l2_subdev *sd,
+ 	}
+ 
+ 	cci_ctrl->status = rc;
++	pr_emerg("vamos-cam-cci: core_cfg exit cci=%d cmd=%d master=%d rc=%d state=%d ref=%u status=%d active=%u\n",
++		cci_dev->soc_info.index, cci_ctrl->cmd, master, rc,
++		cci_dev->cci_state, cci_dev->ref_count,
++		cci_dev->cci_master_info[master].status,
++		cci_dev->master_active_slave[master]);
+ 
+ 	return rc;
+ }
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_dev.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_dev.c
+index 056d61c41..426f4e100 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_dev.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_dev.c
+@@ -77,6 +77,17 @@ irqreturn_t cam_cci_irq(int irq_num, void *data)
+ 	CAM_DBG(CAM_CCI,
+ 		"BASE: %pK, irq0:%x irq1:%x",
+ 		base, irq_status0, irq_status1);
++	if (irq_status0 || irq_status1)
++		pr_emerg("vamos-cam-cci: irq cci=%d irq=%d status0=0x%x status1=0x%x mask0=0x%x mask1=0x%x ref=%u state=%d m0_status=%d m1_status=%d active0=%u active1=%u\n",
++			cci_dev->soc_info.index, irq_num,
++			irq_status0, irq_status1,
++			cam_io_r_mb(base + CCI_IRQ_MASK_0_ADDR),
++			cam_io_r_mb(base + CCI_IRQ_MASK_1_ADDR),
++			cci_dev->ref_count, cci_dev->cci_state,
++			cci_dev->cci_master_info[MASTER_0].status,
++			cci_dev->cci_master_info[MASTER_1].status,
++			cci_dev->master_active_slave[MASTER_0],
++			cci_dev->master_active_slave[MASTER_1]);
+ 
+ 	cam_io_w_mb(irq_status0, base + CCI_IRQ_CLEAR_0_ADDR);
+ 	cam_io_w_mb(irq_status1, base + CCI_IRQ_CLEAR_1_ADDR);
+@@ -104,6 +115,8 @@ irqreturn_t cam_cci_irq(int irq_num, void *data)
+ 		cam_io_w_mb(reg_bmsk, base + CCI_IRQ_MASK_1_ADDR);
+ 		CAM_DBG(CAM_CCI, "Updating the reg mask for irq1: 0x%x",
+ 			reg_bmsk);
++		pr_emerg("vamos-cam-cci: irq mask1 update reg_bmsk=0x%x irqs_disabled=0x%x\n",
++			reg_bmsk, cci_dev->irqs_disabled);
+ 	} else if (irq_status0 & CCI_IRQ_STATUS_0_I2C_M0_RD_DONE_BMSK ||
+ 		irq_status0 & CCI_IRQ_STATUS_0_I2C_M1_RD_DONE_BMSK) {
+ 		if (irq_status0 & CCI_IRQ_STATUS_0_I2C_M0_RD_DONE_BMSK) {
+@@ -133,12 +146,19 @@ irqreturn_t cam_cci_irq(int irq_num, void *data)
+ 	if (irq_update_rd_done != 0) {
+ 		irq_update_rd_done |= cam_io_r_mb(base + CCI_IRQ_MASK_1_ADDR);
+ 		cam_io_w_mb(irq_update_rd_done, base + CCI_IRQ_MASK_1_ADDR);
++		pr_emerg("vamos-cam-cci: irq rd_done mask restore=0x%x\n",
++			irq_update_rd_done);
+ 	}
+ 
+ 	cam_io_w_mb(0x1, base + CCI_IRQ_GLOBAL_CLEAR_CMD_ADDR);
+ 
+ 	if (irq_status0 & CCI_IRQ_STATUS_0_RST_DONE_ACK_BMSK) {
+ 		struct cam_cci_master_info *cci_master_info;
++		pr_emerg("vamos-cam-cci: irq reset-done pending0=%d pending1=%d status0=%d status1=%d\n",
++			cci_dev->cci_master_info[MASTER_0].reset_pending,
++			cci_dev->cci_master_info[MASTER_1].reset_pending,
++			cci_dev->cci_master_info[MASTER_0].status,
++			cci_dev->cci_master_info[MASTER_1].status);
+ 		if (cci_dev->cci_master_info[MASTER_0].reset_pending == true) {
+ 			cci_master_info = &cci_dev->cci_master_info[MASTER_0];
+ 			cci_dev->cci_master_info[MASTER_0].reset_pending =
+@@ -279,11 +299,15 @@ irqreturn_t cam_cci_irq(int irq_num, void *data)
+ 		CAM_DBG(CAM_CCI, "RD_PAUSE ON MASTER_1");
+ 
+ 	if (irq_status0 & CCI_IRQ_STATUS_0_I2C_M0_Q0Q1_HALT_ACK_BMSK) {
++		pr_emerg("vamos-cam-cci: irq halt-ack master=0 status0=0x%x issuing reset\n",
++			irq_status0);
+ 		cci_dev->cci_master_info[MASTER_0].reset_pending = true;
+ 		cam_io_w_mb(CCI_M0_RESET_RMSK,
+ 			base + CCI_RESET_CMD_ADDR);
+ 	}
+ 	if (irq_status0 & CCI_IRQ_STATUS_0_I2C_M1_Q0Q1_HALT_ACK_BMSK) {
++		pr_emerg("vamos-cam-cci: irq halt-ack master=1 status0=0x%x issuing reset\n",
++			irq_status0);
+ 		cci_dev->cci_master_info[MASTER_1].reset_pending = true;
+ 		cam_io_w_mb(CCI_M1_RESET_RMSK,
+ 			base + CCI_RESET_CMD_ADDR);
+@@ -291,6 +315,12 @@ irqreturn_t cam_cci_irq(int irq_num, void *data)
+ 	if (irq_status0 & CCI_IRQ_STATUS_0_I2C_M0_ERROR_BMSK) {
+ 		cci_dev->cci_master_info[MASTER_0].status = -EINVAL;
+ 		if (irq_status0 & CCI_IRQ_STATUS_0_I2C_M0_Q0_NACK_ERROR_BMSK) {
++			pr_emerg("vamos-cam-cci: irq nack cci=%d master=0 queue=0 status0=0x%x status1=0x%x cur=0x%x exec=0x%x read_level=0x%x\n",
++				cci_dev->soc_info.index, irq_status0,
++				irq_status1,
++				cam_io_r_mb(base + CCI_I2C_M0_Q0_CUR_WORD_CNT_ADDR),
++				cam_io_r_mb(base + CCI_I2C_M0_Q0_EXEC_WORD_CNT_ADDR),
++				cam_io_r_mb(base + CCI_I2C_M0_READ_BUF_LEVEL_ADDR));
+ 			CAM_ERR(CAM_CCI,
+ 				"Base:%pK,cci: %d, M0_Q0 NACK ERROR: 0x%x",
+ 				base, cci_dev->soc_info.index, irq_status0);
+@@ -300,6 +330,12 @@ irqreturn_t cam_cci_irq(int irq_num, void *data)
+ 				.report_q[QUEUE_0]);
+ 		}
+ 		if (irq_status0 & CCI_IRQ_STATUS_0_I2C_M0_Q1_NACK_ERROR_BMSK) {
++			pr_emerg("vamos-cam-cci: irq nack cci=%d master=0 queue=1 status0=0x%x status1=0x%x cur=0x%x exec=0x%x read_level=0x%x\n",
++				cci_dev->soc_info.index, irq_status0,
++				irq_status1,
++				cam_io_r_mb(base + CCI_I2C_M0_Q0_CUR_WORD_CNT_ADDR + 0x100),
++				cam_io_r_mb(base + CCI_I2C_M0_Q0_EXEC_WORD_CNT_ADDR + 0x100),
++				cam_io_r_mb(base + CCI_I2C_M0_READ_BUF_LEVEL_ADDR));
+ 			CAM_ERR(CAM_CCI,
+ 				"Base:%pK,cci: %d, M0_Q1 NACK ERROR: 0x%x",
+ 				base, cci_dev->soc_info.index, irq_status0);
+@@ -318,11 +354,19 @@ irqreturn_t cam_cci_irq(int irq_num, void *data)
+ 				base, irq_status0);
+ 
+ 		cci_dev->cci_master_info[MASTER_0].reset_pending = true;
++		pr_emerg("vamos-cam-cci: irq error master=0 issuing reset status0=0x%x\n",
++			irq_status0);
+ 		cam_io_w_mb(CCI_M0_RESET_RMSK, base + CCI_RESET_CMD_ADDR);
+ 	}
+ 	if (irq_status0 & CCI_IRQ_STATUS_0_I2C_M1_ERROR_BMSK) {
+ 		cci_dev->cci_master_info[MASTER_1].status = -EINVAL;
+ 		if (irq_status0 & CCI_IRQ_STATUS_0_I2C_M1_Q0_NACK_ERROR_BMSK) {
++			pr_emerg("vamos-cam-cci: irq nack cci=%d master=1 queue=0 status0=0x%x status1=0x%x cur=0x%x exec=0x%x read_level=0x%x\n",
++				cci_dev->soc_info.index, irq_status0,
++				irq_status1,
++				cam_io_r_mb(base + CCI_I2C_M0_Q0_CUR_WORD_CNT_ADDR + 0x200),
++				cam_io_r_mb(base + CCI_I2C_M0_Q0_EXEC_WORD_CNT_ADDR + 0x200),
++				cam_io_r_mb(base + CCI_I2C_M0_READ_BUF_LEVEL_ADDR + 0x100));
+ 			CAM_ERR(CAM_CCI,
+ 				"Base:%pK, cci: %d, M1_Q0 NACK ERROR: 0x%x",
+ 				base, cci_dev->soc_info.index, irq_status0);
+@@ -332,6 +376,12 @@ irqreturn_t cam_cci_irq(int irq_num, void *data)
+ 			.report_q[QUEUE_0]);
+ 		}
+ 		if (irq_status0 & CCI_IRQ_STATUS_0_I2C_M1_Q1_NACK_ERROR_BMSK) {
++			pr_emerg("vamos-cam-cci: irq nack cci=%d master=1 queue=1 status0=0x%x status1=0x%x cur=0x%x exec=0x%x read_level=0x%x\n",
++				cci_dev->soc_info.index, irq_status0,
++				irq_status1,
++				cam_io_r_mb(base + CCI_I2C_M0_Q0_CUR_WORD_CNT_ADDR + 0x300),
++				cam_io_r_mb(base + CCI_I2C_M0_Q0_EXEC_WORD_CNT_ADDR + 0x300),
++				cam_io_r_mb(base + CCI_I2C_M0_READ_BUF_LEVEL_ADDR + 0x100));
+ 			CAM_ERR(CAM_CCI,
+ 				"Base:%pK, cci: %d, M1_Q1 NACK ERROR: 0x%x",
+ 				base, cci_dev->soc_info.index, irq_status0);
+@@ -350,6 +400,8 @@ irqreturn_t cam_cci_irq(int irq_num, void *data)
+ 				base, cci_dev->soc_info.index, irq_status0);
+ 
+ 		cci_dev->cci_master_info[MASTER_1].reset_pending = true;
++		pr_emerg("vamos-cam-cci: irq error master=1 issuing reset status0=0x%x\n",
++			irq_status0);
+ 		cam_io_w_mb(CCI_M1_RESET_RMSK, base + CCI_RESET_CMD_ADDR);
+ 	}
+ 
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_soc.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_soc.c
+index 6d0197396..4a1cc8da3 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_soc.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_soc.c
+@@ -41,10 +41,18 @@ static int cam_cci_init_master(struct cci_device *cci_dev,
+ 		cci_dev->cci_master_info[master].reset_pending = true;
+ 		cci_dev->cci_master_info[master].status = 0;
+ 		if (cci_dev->ref_count == 1) {
++			pr_emerg("vamos-cam-cci: init_master reset all cci=%d master=%d ref=%u cmd=0x%x\n",
++				cci_dev->soc_info.index, master,
++				cci_dev->ref_count, CCI_RESET_CMD_RMSK);
+ 			cam_io_w_mb(CCI_RESET_CMD_RMSK,
+ 				base + CCI_RESET_CMD_ADDR);
+ 			cam_io_w_mb(0x1, base + CCI_RESET_CMD_ADDR);
+ 		} else {
++			pr_emerg("vamos-cam-cci: init_master reset single cci=%d master=%d ref=%u cmd=0x%x\n",
++				cci_dev->soc_info.index, master,
++				cci_dev->ref_count,
++				(master == MASTER_0) ?
++					CCI_M0_RESET_RMSK : CCI_M1_RESET_RMSK);
+ 			cam_io_w_mb((master == MASTER_0) ?
+ 				CCI_M0_RESET_RMSK : CCI_M1_RESET_RMSK,
+ 				base + CCI_RESET_CMD_ADDR);
+@@ -57,8 +65,16 @@ static int cam_cci_init_master(struct cci_device *cci_dev,
+ 				master);
+ 			rc = -ETIMEDOUT;
+ 			cci_dev->master_active_slave[master]--;
++			pr_emerg("vamos-cam-cci: init_master reset timeout cci=%d master=%d status=%d reset_pending=%d\n",
++				cci_dev->soc_info.index, master,
++				cci_dev->cci_master_info[master].status,
++				cci_dev->cci_master_info[master].reset_pending);
+ 			return rc;
+ 		}
++		pr_emerg("vamos-cam-cci: init_master reset done cci=%d master=%d status=%d reset_pending=%d\n",
++			cci_dev->soc_info.index, master,
++			cci_dev->cci_master_info[master].status,
++			cci_dev->cci_master_info[master].reset_pending);
+ 
+ 		flush_workqueue(cci_dev->write_wq[master]);
+ 
+@@ -77,6 +93,17 @@ static int cam_cci_init_master(struct cci_device *cci_dev,
+ 		cci_dev->cci_master_info[master].status = 0;
+ 		cci_dev->cci_master_info[master].is_initilized = true;
+ 		cci_dev->is_burst_read[master] = false;
++		pr_emerg("vamos-cam-cci: init_master configured cci=%d master=%d q0=%u q1=%u active=%u init=%d\n",
++			cci_dev->soc_info.index, master,
++			cci_dev->cci_i2c_queue_info[master][QUEUE_0].max_queue_size,
++			cci_dev->cci_i2c_queue_info[master][QUEUE_1].max_queue_size,
++			cci_dev->master_active_slave[master],
++			cci_dev->cci_master_info[master].is_initilized);
++	} else {
++		pr_emerg("vamos-cam-cci: init_master already initialized cci=%d master=%d active=%u ref=%u\n",
++			cci_dev->soc_info.index, master,
++			cci_dev->master_active_slave[master],
++			cci_dev->ref_count);
+ 	}
+ 
+ 	return 0;
+@@ -138,6 +165,11 @@ int cam_cci_init(struct v4l2_subdev *sd,
+ 		}
+ 		CAM_DBG(CAM_CCI, "ref_count %d, master: %d",
+ 			cci_dev->ref_count, master);
++		pr_emerg("vamos-cam-cci: init reused platform cci=%d master=%d rc=%d ref=%u active=%u state=%d\n",
++			cci_dev->soc_info.index, master, rc,
++			cci_dev->ref_count,
++			cci_dev->master_active_slave[master],
++			cci_dev->cci_state);
+ 		return rc;
+ 	}
+ 
+@@ -158,6 +190,9 @@ int cam_cci_init(struct v4l2_subdev *sd,
+ 		(unsigned long long)axi_vote.axi_path[0].mnoc_ib_bw);
+ 	if (rc) {
+ 		CAM_ERR(CAM_CCI, "CPAS start failed rc= %d", rc);
++		pr_emerg("vamos-cam-cci: init cpas start failed cci=%d master=%d rc=%d ref=%u\n",
++			cci_dev->soc_info.index, master, rc,
++			cci_dev->ref_count);
+ 		return rc;
+ 	}
+ 
+@@ -171,6 +206,9 @@ int cam_cci_init(struct v4l2_subdev *sd,
+ 	if (rc < 0) {
+ 		CAM_DBG(CAM_CCI, "request platform resources failed, rc: %d",
+ 			rc);
++		pr_emerg("vamos-cam-cci: init platform enable failed cci=%d master=%d rc=%d ref=%u\n",
++			cci_dev->soc_info.index, master, rc,
++			cci_dev->ref_count);
+ 		goto platform_enable_failed;
+ 	}
+ 
+@@ -188,6 +226,9 @@ int cam_cci_init(struct v4l2_subdev *sd,
+ 	if (rc) {
+ 		CAM_ERR(CAM_CCI, "Failed to init: Master: %d, rc: %d",
+ 			master, rc);
++		pr_emerg("vamos-cam-cci: init master failed cci=%d master=%d rc=%d ref=%u\n",
++			cci_dev->soc_info.index, master, rc,
++			cci_dev->ref_count);
+ 		goto reset_complete_failed;
+ 	}
+ 
+@@ -223,6 +264,9 @@ int cam_cci_init(struct v4l2_subdev *sd,
+ platform_enable_failed:
+ 	cci_dev->ref_count--;
+ 	cam_cpas_stop(cci_dev->cpas_handle);
++	pr_emerg("vamos-cam-cci: init failure cleanup cci=%d master=%d rc=%d ref=%u state=%d\n",
++		cci_dev->soc_info.index, master, rc,
++		cci_dev->ref_count, cci_dev->cci_state);
+ 
+ 	return rc;
+ }
+@@ -304,6 +348,8 @@ static void cam_cci_init_clk_params(struct cci_device *cci_dev)
+ 			src_node = of_find_node_by_name(of_node,
+ 				"qcom,i2c-custom-mode");
+ 
++		pr_emerg("vamos-cam-cci: clk-params parse mode=%u node=%pOF\n",
++			count, src_node);
+ 		rc = of_property_read_u32(src_node, "hw-thigh", &val);
+ 		CAM_DBG(CAM_CCI, "hw-thigh %d, rc %d", val, rc);
+ 		if (!rc) {
+@@ -375,8 +421,24 @@ static void cam_cci_init_clk_params(struct cci_device *cci_dev)
+ 				&val);
+ 			CAM_DBG(CAM_CCI, "cci-clk-src %d, rc %d", val, rc);
+ 			cci_dev->cci_clk_params[count].cci_clk_src = val;
+-		} else
++		} else {
+ 			cam_cci_init_default_clk_params(cci_dev, count);
++			pr_emerg("vamos-cam-cci: clk-params default mode=%u rc=%d\n",
++				count, rc);
++		}
++		pr_emerg("vamos-cam-cci: clk-params mode=%u thigh=%u tlow=%u tsu_sto=%u tsu_sta=%u thd_dat=%u thd_sta=%u tbuf=%u stretch=%u trdhld=%u tsp=%u src=%u rc=%d\n",
++			count,
++			cci_dev->cci_clk_params[count].hw_thigh,
++			cci_dev->cci_clk_params[count].hw_tlow,
++			cci_dev->cci_clk_params[count].hw_tsu_sto,
++			cci_dev->cci_clk_params[count].hw_tsu_sta,
++			cci_dev->cci_clk_params[count].hw_thd_dat,
++			cci_dev->cci_clk_params[count].hw_thd_sta,
++			cci_dev->cci_clk_params[count].hw_tbuf,
++			cci_dev->cci_clk_params[count].hw_scl_stretch_en,
++			cci_dev->cci_clk_params[count].hw_trdhld,
++			cci_dev->cci_clk_params[count].hw_tsp,
++			cci_dev->cci_clk_params[count].cci_clk_src, rc);
+ 
+ 		of_node_put(src_node);
+ 	}
+@@ -392,8 +454,14 @@ int cam_cci_parse_dt_info(struct platform_device *pdev,
+ 	rc = cam_soc_util_get_dt_properties(soc_info);
+ 	if (rc < 0) {
+ 		CAM_ERR(CAM_CCI, "Parsing DT data failed:%d", rc);
++		pr_emerg("vamos-cam-cci: parse-dt get properties failed dev=%s rc=%d\n",
++			dev_name(&pdev->dev), rc);
+ 		return -EINVAL;
+ 	}
++	pr_emerg("vamos-cam-cci: parse-dt props dev=%s index=%d num_clk=%u src_idx=%d num_reg=%d num_mem=%u irq=%d\n",
++		dev_name(&pdev->dev), soc_info->index, soc_info->num_clk,
++		soc_info->src_clk_idx, soc_info->num_rgltr,
++		soc_info->num_mem_block, soc_info->irq_num);
+ 
+ 	new_cci_dev->ref_count = 0;
+ 
+@@ -401,8 +469,14 @@ int cam_cci_parse_dt_info(struct platform_device *pdev,
+ 		cam_cci_irq, new_cci_dev);
+ 	if (rc < 0) {
+ 		CAM_ERR(CAM_CCI, "requesting platform resources failed:%d", rc);
++		pr_emerg("vamos-cam-cci: parse-dt request platform failed dev=%s rc=%d\n",
++			dev_name(&pdev->dev), rc);
+ 		return -EINVAL;
+ 	}
++	pr_emerg("vamos-cam-cci: parse-dt request platform ok dev=%s reg_base=%pK irq=%d\n",
++		dev_name(&pdev->dev),
++		soc_info->reg_map[0].mem_base,
++		soc_info->irq_num);
+ 	new_cci_dev->v4l2_dev_str.pdev = pdev;
+ 	cam_cci_init_cci_params(new_cci_dev);
+ 	cam_cci_init_clk_params(new_cci_dev);
+@@ -414,6 +488,8 @@ int cam_cci_parse_dt_info(struct platform_device *pdev,
+ 			CAM_ERR(CAM_CCI, "Failed to create write wq");
+ 	}
+ 	CAM_DBG(CAM_CCI, "Exit");
++	pr_emerg("vamos-cam-cci: parse-dt exit dev=%s rc=0\n",
++		dev_name(&pdev->dev));
+ 	return 0;
+ }
+ 
+@@ -423,12 +499,20 @@ int cam_cci_soc_release(struct cci_device *cci_dev,
+ 	uint8_t i = 0, rc = 0;
+ 	struct cam_hw_soc_info *soc_info = &cci_dev->soc_info;
+ 
++	pr_emerg("vamos-cam-cci: soc_release enter cci=%d master=%d ref=%u state=%d active=%u init=%d\n",
++		cci_dev->soc_info.index, master, cci_dev->ref_count,
++		cci_dev->cci_state, cci_dev->master_active_slave[master],
++		cci_dev->cci_master_info[master].is_initilized);
+ 	if (!cci_dev->ref_count || cci_dev->cci_state != CCI_STATE_ENABLED ||
+ 			!cci_dev->master_active_slave[master]) {
+ 		CAM_ERR(CAM_CCI,
+ 			"invalid cci_dev_ref count %u | cci state %d | master_ref_count %u",
+ 			cci_dev->ref_count, cci_dev->cci_state,
+ 			cci_dev->master_active_slave[master]);
++		pr_emerg("vamos-cam-cci: soc_release invalid cci=%d master=%d ref=%u state=%d active=%u\n",
++			cci_dev->soc_info.index, master,
++			cci_dev->ref_count, cci_dev->cci_state,
++			cci_dev->master_active_slave[master]);
+ 		return -EINVAL;
+ 	}
+ 
+@@ -436,11 +520,17 @@ int cam_cci_soc_release(struct cci_device *cci_dev,
+ 		cci_dev->cci_master_info[master].is_initilized = false;
+ 		CAM_DBG(CAM_CCI,
+ 			"All submodules are released for master: %d", master);
++		pr_emerg("vamos-cam-cci: soc_release master idle cci=%d master=%d\n",
++			cci_dev->soc_info.index, master);
+ 	}
+ 
+ 	if (--cci_dev->ref_count) {
+ 		CAM_DBG(CAM_CCI, "Submodule release: Ref_count: %d",
+ 			cci_dev->ref_count);
++		pr_emerg("vamos-cam-cci: soc_release keep platform cci=%d master=%d ref=%u active=%u\n",
++			cci_dev->soc_info.index, master,
++			cci_dev->ref_count,
++			cci_dev->master_active_slave[master]);
+ 		return 0;
+ 	}
+ 
+@@ -451,6 +541,8 @@ int cam_cci_soc_release(struct cci_device *cci_dev,
+ 	}
+ 
+ 	rc = cam_soc_util_disable_platform_resource(soc_info, true, true);
++	pr_emerg("vamos-cam-cci: soc_release disable platform cci=%d master=%d rc=%d\n",
++		cci_dev->soc_info.index, master, rc);
+ 	if (rc) {
+ 		CAM_ERR(CAM_CCI, "platform resources disable failed, rc=%d",
+ 			rc);
+@@ -461,6 +553,9 @@ int cam_cci_soc_release(struct cci_device *cci_dev,
+ 	cci_dev->cycles_per_us = 0;
+ 
+ 	cam_cpas_stop(cci_dev->cpas_handle);
++	pr_emerg("vamos-cam-cci: soc_release exit cci=%d master=%d rc=%d ref=%u state=%d\n",
++		cci_dev->soc_info.index, master, rc,
++		cci_dev->ref_count, cci_dev->cci_state);
+ 
+ 	return rc;
+ }
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_res_mgr/cam_res_mgr.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_res_mgr/cam_res_mgr.c
+index 006183170..31ebb63e8 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_res_mgr/cam_res_mgr.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_res_mgr/cam_res_mgr.c
+@@ -19,6 +19,56 @@
+ 
+ static struct cam_res_mgr *cam_res;
+ 
++static int cam_res_mgr_dbg_dev_count(struct cam_gpio_res *gpio_res)
++{
++	int count = 0;
++	struct list_head *list;
++
++	if (!gpio_res)
++		return 0;
++
++	list_for_each(list, &gpio_res->dev_list)
++		count++;
++
++	return count;
++}
++
++static void cam_res_mgr_dbg_dump_lists_locked(const char *tag)
++{
++	int i;
++	struct cam_gpio_res *gpio_res = NULL;
++
++	if (!cam_res) {
++		pr_emerg("vamos-cam-res: %s cam_res=NULL\n", tag);
++		return;
++	}
++
++	pr_emerg("vamos-cam-res: %s shared_en=%d num_gpio=%d num_pctrl=%d pstatus=%d pinctrl=%pK\n",
++		tag, cam_res->shared_gpio_enabled, cam_res->dt.num_shared_gpio,
++		cam_res->dt.num_shared_pctrl_gpio, cam_res->pstatus,
++		cam_res->pinctrl);
++
++	for (i = 0; i < cam_res->dt.num_shared_gpio; i++)
++		pr_emerg("vamos-cam-res: %s shared-gpio[%d]=%u\n",
++			tag, i, cam_res->dt.shared_gpio[i]);
++
++	for (i = 0; i < cam_res->dt.num_shared_pctrl_gpio; i++)
++		pr_emerg("vamos-cam-res: %s shared-pctrl[%d]=%u name=%s status=%d active=%pK suspend=%pK\n",
++			tag, i, cam_res->dt.shared_pctrl_gpio[i],
++			cam_res->dt.pctrl_name[i] ?: "<null>",
++			cam_res->pctrl_res[i].pstatus,
++			cam_res->pctrl_res[i].active,
++			cam_res->pctrl_res[i].suspend);
++
++	list_for_each_entry(gpio_res, &cam_res->gpio_res_list, list)
++		pr_emerg("vamos-cam-res: %s live gpio=%u value=%d power_count=%d dev_count=%d\n",
++			tag, gpio_res->gpio,
++			gpio_is_valid(gpio_res->gpio) ?
++				gpio_get_value_cansleep(gpio_res->gpio) : -999,
++			gpio_res->power_on_count,
++			cam_res_mgr_dbg_dev_count(gpio_res));
++}
++
+ static void cam_res_mgr_free_res(void)
+ {
+ 	struct cam_dev_res *dev_res, *dev_temp;
+@@ -234,11 +284,15 @@ int cam_res_mgr_util_shared_gpio_check_hold(uint gpio)
+ 
+ 	if (!cam_res) {
+ 		CAM_DBG(CAM_RES, "res mgr is not initilized");
++		pr_emerg("vamos-cam-res: check-hold gpio=%u cam_res=NULL\n",
++			gpio);
+ 		return 0;
+ 	}
+ 
+ 	if (!cam_res->shared_gpio_enabled) {
+ 		CAM_DBG(CAM_RES, "Res_mgr is not sharing any gpios");
++		pr_emerg("vamos-cam-res: check-hold gpio=%u shared disabled\n",
++			gpio);
+ 		return 0;
+ 	}
+ 
+@@ -252,9 +306,15 @@ int cam_res_mgr_util_shared_gpio_check_hold(uint gpio)
+ 	if (is_shared_gpio && is_shared_pctrl_gpio) {
+ 		CAM_ERR(CAM_RES,
+ 			"gpio cannot be shared between pinctrl and gpio");
++		pr_emerg("vamos-cam-res: check-hold gpio=%u both shared-gpio and shared-pctrl\n",
++			gpio);
+ 		return -EINVAL;
+ 	}
+ 
++	pr_emerg("vamos-cam-res: check-hold enter gpio=%u in_gpio=%d in_pctrl=%d\n",
++		gpio, is_shared_gpio, is_shared_pctrl_gpio);
++	cam_res_mgr_dbg_dump_lists_locked("check-hold-enter");
++
+ 	if (is_shared_gpio) {
+ 		index = cam_res_mgr_util_get_idx_from_shared_gpio(gpio);
+ 		if (index < 0) {
+@@ -272,6 +332,8 @@ int cam_res_mgr_util_shared_gpio_check_hold(uint gpio)
+ 					dev_num++;
+ 
+ 				if (dev_num >= 2) {
++					pr_emerg("vamos-cam-res: check-hold gpio=%u direct hold dev_num=%d\n",
++						gpio, dev_num);
+ 					return RES_MGR_GPIO_NEED_HOLD;
+ 				}
+ 			}
+@@ -297,6 +359,8 @@ int cam_res_mgr_util_shared_gpio_check_hold(uint gpio)
+ 				if (dev_num >= 2) {
+ 					CAM_DBG(CAM_RES,
+ 						"gpio: %u needs to hold", gpio);
++					pr_emerg("vamos-cam-res: check-hold gpio=%u pctrl hold dev_num=%d\n",
++						gpio, dev_num);
+ 					return RES_MGR_GPIO_NEED_HOLD;
+ 				}
+ 			}
+@@ -315,6 +379,8 @@ int cam_res_mgr_util_shared_gpio_check_hold(uint gpio)
+ 				if (dev_num >= 2) {
+ 					CAM_DBG(CAM_RES,
+ 						"gpio: %u needs to hold", gpio);
++					pr_emerg("vamos-cam-res: check-hold gpio=%u any-shared-gpio hold dev_num=%d idx=%d\n",
++						gpio, dev_num, index);
+ 					return RES_MGR_GPIO_NEED_HOLD;
+ 				}
+ 			}
+@@ -333,6 +399,8 @@ int cam_res_mgr_util_shared_gpio_check_hold(uint gpio)
+ 				if (dev_num >= 2) {
+ 					CAM_DBG(CAM_RES,
+ 						"gpio: %u needs to hold", gpio);
++					pr_emerg("vamos-cam-res: check-hold gpio=%u any-pctrl hold dev_num=%d idx=%d\n",
++						gpio, dev_num, index);
+ 					return RES_MGR_GPIO_NEED_HOLD;
+ 				}
+ 			}
+@@ -340,6 +408,7 @@ int cam_res_mgr_util_shared_gpio_check_hold(uint gpio)
+ 	}
+ 
+ 	CAM_DBG(CAM_RES, "gpio: %u can free the resource", gpio);
++	pr_emerg("vamos-cam-res: check-hold gpio=%u can-free\n", gpio);
+ 	return RES_MGR_GPIO_CAN_FREE;
+ }
+ 
+@@ -350,14 +419,22 @@ static int cam_res_mgr_shared_pinctrl_select_state(
+ 
+ 	if (!cam_res || !cam_res->shared_gpio_enabled) {
+ 		CAM_DBG(CAM_RES, "Not support shared gpio.");
++		pr_emerg("vamos-cam-res: pctrl-select idx=%d active=%d skipped cam_res=%pK shared=%d\n",
++			idx, active, cam_res,
++			cam_res ? cam_res->shared_gpio_enabled : -1);
+ 		return 0;
+ 	}
+ 
+ 	if (cam_res->pctrl_res[idx].pstatus == PINCTRL_STATUS_PUT) {
+ 		CAM_DBG(CAM_RES, "The shared pinctrl alerady been put.!");
++		pr_emerg("vamos-cam-res: pctrl-select idx=%d active=%d skipped status=PUT\n",
++			idx, active);
+ 		return 0;
+ 	}
+ 
++	pr_emerg("vamos-cam-res: pctrl-select enter idx=%d active=%d old_status=%d\n",
++		idx, active, cam_res->pctrl_res[idx].pstatus);
++
+ 	if (active &&
+ 		(cam_res->pctrl_res[idx].pstatus != PINCTRL_STATUS_ACTIVE)) {
+ 		CAM_DBG(CAM_RES,
+@@ -366,6 +443,8 @@ static int cam_res_mgr_shared_pinctrl_select_state(
+ 		rc = pinctrl_select_state(cam_res->pinctrl,
+ 			cam_res->pctrl_res[idx].active);
+ 		cam_res->pctrl_res[idx].pstatus = PINCTRL_STATUS_ACTIVE;
++		pr_emerg("vamos-cam-res: pctrl-select active idx=%d rc=%d new_status=%d\n",
++			idx, rc, cam_res->pctrl_res[idx].pstatus);
+ 	} else if (!active &&
+ 		(cam_res->pctrl_res[idx].pstatus == PINCTRL_STATUS_ACTIVE)) {
+ 		CAM_DBG(CAM_RES,
+@@ -374,6 +453,11 @@ static int cam_res_mgr_shared_pinctrl_select_state(
+ 		rc = pinctrl_select_state(cam_res->pinctrl,
+ 			cam_res->pctrl_res[idx].suspend);
+ 		cam_res->pctrl_res[idx].pstatus = PINCTRL_STATUS_SUSPEND;
++		pr_emerg("vamos-cam-res: pctrl-select suspend idx=%d rc=%d new_status=%d\n",
++			idx, rc, cam_res->pctrl_res[idx].pstatus);
++	} else {
++		pr_emerg("vamos-cam-res: pctrl-select noop idx=%d active=%d status=%d\n",
++			idx, active, cam_res->pctrl_res[idx].pstatus);
+ 	}
+ 
+ 	return rc;
+@@ -436,10 +520,18 @@ int cam_res_mgr_gpio_request(struct device *dev, uint gpio,
+ 	int                          rc = 0;
+ 	bool                         dev_found = false;
+ 	bool                         gpio_found = false;
++	bool                         in_shared_gpio = false;
++	bool                         in_shared_pctrl_gpio = false;
+ 	int                          pctrl_idx = -1;
+ 	struct cam_gpio_res         *gpio_res = NULL;
+ 
+ 	mutex_lock(&cam_res->gpio_res_lock);
++	in_shared_gpio = cam_res_mgr_gpio_is_in_shared_gpio(gpio);
++	in_shared_pctrl_gpio = cam_res_mgr_gpio_is_in_shared_pctrl_gpio(gpio);
++	pr_emerg("vamos-cam-res: gpio-request enter dev=%s gpio=%u flags=0x%lx label=%s shared_en=%d in_gpio=%d in_pctrl=%d\n",
++		dev ? dev_name(dev) : "<null>", gpio, flags, label ?: "<null>",
++		cam_res ? cam_res->shared_gpio_enabled : -1,
++		in_shared_gpio, in_shared_pctrl_gpio);
+ 	if (cam_res && cam_res->shared_gpio_enabled) {
+ 		gpio_res = cam_res_mgr_find_if_gpio_in_list(gpio);
+ 		if (gpio_res == NULL)
+@@ -447,6 +539,11 @@ int cam_res_mgr_gpio_request(struct device *dev, uint gpio,
+ 		else
+ 			gpio_found = true;
+ 	}
++	pr_emerg("vamos-cam-res: gpio-request lookup gpio=%u found=%d power_count=%d dev_count=%d value=%d\n",
++		gpio, gpio_found,
++		gpio_res ? gpio_res->power_on_count : -1,
++		gpio_res ? cam_res_mgr_dbg_dev_count(gpio_res) : 0,
++		gpio_is_valid(gpio) ? gpio_get_value_cansleep(gpio) : -999);
+ 
+ 	/*
+ 	 * gpio_found equal to false has two situation:
+@@ -459,6 +556,10 @@ int cam_res_mgr_gpio_request(struct device *dev, uint gpio,
+ 		CAM_DBG(CAM_RES, "NonPinctrl gpio: %u not found in gpio_res list", gpio);
+ 
+ 		rc = cam_gpio_request_one(gpio, flags, label);
++		pr_emerg("vamos-cam-res: gpio-request raw-request gpio=%u label=%s rc=%d value=%d\n",
++			gpio, label ?: "<null>", rc,
++			(!rc && gpio_is_valid(gpio)) ?
++				gpio_get_value_cansleep(gpio) : -999);
+ 		if (rc) {
+ 			CAM_ERR(CAM_RES, "gpio %d:%s request fails rc = %d",
+ 				gpio, label, rc);
+@@ -476,6 +577,8 @@ int cam_res_mgr_gpio_request(struct device *dev, uint gpio,
+ 		(cam_res_mgr_gpio_is_in_shared_gpio(gpio) ||
+ 		(cam_res_mgr_gpio_is_in_shared_pctrl_gpio(gpio)))) {
+ 		CAM_DBG(CAM_RES, "gpio: %u is shared", gpio);
++		pr_emerg("vamos-cam-res: gpio-request add shared gpio=%u dev=%s\n",
++			gpio, dev ? dev_name(dev) : "<null>");
+ 
+ 		gpio_res = kzalloc(sizeof(struct cam_gpio_res), GFP_KERNEL);
+ 		if (!gpio_res) {
+@@ -494,6 +597,9 @@ int cam_res_mgr_gpio_request(struct device *dev, uint gpio,
+ 		}
+ 
+ 		list_add_tail(&gpio_res->list, &cam_res->gpio_res_list);
++		pr_emerg("vamos-cam-res: gpio-request added shared gpio=%u power_count=%d dev_count=%d\n",
++			gpio, gpio_res->power_on_count,
++			cam_res_mgr_dbg_dev_count(gpio_res));
+ 	}
+ 
+ 	/* if shared gpio is in pinctrl gpio list */
+@@ -534,10 +640,17 @@ int cam_res_mgr_gpio_request(struct device *dev, uint gpio,
+ 					rc);
+ 				goto end;
+ 			}
++			pr_emerg("vamos-cam-res: gpio-request add-device existing gpio=%u dev=%s dev_count=%d\n",
++				gpio, dev ? dev_name(dev) : "<null>",
++				cam_res_mgr_dbg_dev_count(gpio_res));
+ 		}
+ 	}
+ 
+ end:
++	pr_emerg("vamos-cam-res: gpio-request exit gpio=%u rc=%d found=%d dev_found=%d value=%d\n",
++		gpio, rc, gpio_found, dev_found,
++		gpio_is_valid(gpio) ? gpio_get_value_cansleep(gpio) : -999);
++	cam_res_mgr_dbg_dump_lists_locked("gpio-request-exit");
+ 	mutex_unlock(&cam_res->gpio_res_lock);
+ 	return rc;
+ }
+@@ -580,6 +693,12 @@ static void cam_res_mgr_gpio_free(struct device *dev, uint gpio)
+ 			cam_res_mgr_gpio_is_in_shared_pctrl_gpio(gpio);
+ 
+ 	mutex_lock(&cam_res->gpio_res_lock);
++	pr_emerg("vamos-cam-res: gpio-free enter dev=%s gpio=%u shared_en=%d in_gpio=%d in_pctrl=%d value=%d\n",
++		dev ? dev_name(dev) : "<null>", gpio,
++		cam_res ? cam_res->shared_gpio_enabled : -1,
++		cam_res_mgr_gpio_is_in_shared_gpio(gpio),
++		is_shared_pctrl_gpio,
++		gpio_is_valid(gpio) ? gpio_get_value_cansleep(gpio) : -999);
+ 	if (cam_res && cam_res->shared_gpio_enabled) {
+ 		list_for_each_entry(gpio_res, &cam_res->gpio_res_list, list) {
+ 			if (gpio == gpio_res->gpio) {
+@@ -597,6 +716,8 @@ static void cam_res_mgr_gpio_free(struct device *dev, uint gpio)
+ 		/* Count the dev number in the dev_list */
+ 		list_for_each(list, &gpio_res->dev_list)
+ 			dev_num++;
++		pr_emerg("vamos-cam-res: gpio-free shared gpio=%u dev_num_before=%d power_count=%d\n",
++			gpio, dev_num, gpio_res->power_on_count);
+ 
+ 		/*
+ 		 * Need free the gpio if only has last 1 device
+@@ -610,6 +731,8 @@ static void cam_res_mgr_gpio_free(struct device *dev, uint gpio)
+ 			kfree(dev_res);
+ 			list_del_init(&gpio_res->list);
+ 			kfree(gpio_res);
++			pr_emerg("vamos-cam-res: gpio-free removing last shared owner gpio=%u\n",
++				gpio);
+ 		} else {
+ 			list_for_each_entry(dev_res,
+ 				&gpio_res->dev_list, list) {
+@@ -617,6 +740,10 @@ static void cam_res_mgr_gpio_free(struct device *dev, uint gpio)
+ 					list_del_init(&dev_res->list);
+ 					kfree(dev_res);
+ 					need_free = false;
++					pr_emerg("vamos-cam-res: gpio-free hold shared gpio=%u removed dev=%s remaining_before_remove=%d\n",
++						gpio,
++						dev ? dev_name(dev) : "<null>",
++						dev_num);
+ 					break;
+ 				}
+ 			}
+@@ -631,16 +758,23 @@ static void cam_res_mgr_gpio_free(struct device *dev, uint gpio)
+ 			if (pctrl_idx >= 0) {
+ 				cam_res_mgr_shared_pinctrl_select_state(
+ 					pctrl_idx, false);
+-			}
+-			else {
++			} else {
+ 				CAM_ERR(CAM_RES, "Invalid PinCtrl Idx: %d", pctrl_idx);
+ 			}
+ 		} else {
+ 			CAM_DBG(CAM_RES, "freeing gpio: %u", gpio);
++			pr_emerg("vamos-cam-res: gpio-free raw-free gpio=%u value_before=%d\n",
++				gpio,
++				gpio_is_valid(gpio) ?
++					gpio_get_value_cansleep(gpio) : -999);
+ 			gpio_free(gpio);
+ 		}
+ 	}
+ 
++	pr_emerg("vamos-cam-res: gpio-free exit gpio=%u found=%d need_free=%d value=%d\n",
++		gpio, gpio_found, need_free,
++		gpio_is_valid(gpio) ? gpio_get_value_cansleep(gpio) : -999);
++	cam_res_mgr_dbg_dump_lists_locked("gpio-free-exit");
+ 	mutex_unlock(&cam_res->gpio_res_lock);
+ }
+ 
+@@ -655,9 +789,15 @@ int cam_res_mgr_gpio_set_value(unsigned int gpio, int value)
+ {
+ 	int rc = 0;
+ 	bool found = false;
++	int before_count = -1;
++	int after_count = -1;
++	int before_value = -999;
++	int after_value = -999;
+ 	struct cam_gpio_res *gpio_res = NULL;
+ 
+ 	mutex_lock(&cam_res->gpio_res_lock);
++	if (gpio_is_valid(gpio))
++		before_value = gpio_get_value_cansleep(gpio);
+ 	if (cam_res && cam_res->shared_gpio_enabled) {
+ 		list_for_each_entry(gpio_res, &cam_res->gpio_res_list, list) {
+ 			if (gpio == gpio_res->gpio) {
+@@ -666,6 +806,11 @@ int cam_res_mgr_gpio_set_value(unsigned int gpio, int value)
+ 			}
+ 		}
+ 	}
++	if (gpio_res)
++		before_count = gpio_res->power_on_count;
++	pr_emerg("vamos-cam-res: gpio-set enter gpio=%u value=%d found=%d before_count=%d before_level=%d shared_en=%d\n",
++		gpio, value, found, before_count, before_value,
++		cam_res ? cam_res->shared_gpio_enabled : -1);
+ 
+ 	/*
+ 	 * Set the value directly if can't find the gpio from
+@@ -691,6 +836,14 @@ int cam_res_mgr_gpio_set_value(unsigned int gpio, int value)
+ 		}
+ 	}
+ 
++	if (gpio_res)
++		after_count = gpio_res->power_on_count;
++	if (gpio_is_valid(gpio))
++		after_value = gpio_get_value_cansleep(gpio);
++	pr_emerg("vamos-cam-res: gpio-set exit gpio=%u value=%d found=%d before_count=%d after_count=%d before_level=%d after_level=%d\n",
++		gpio, value, found, before_count, after_count,
++		before_value, after_value);
++	cam_res_mgr_dbg_dump_lists_locked("gpio-set-exit");
+ 	mutex_unlock(&cam_res->gpio_res_lock);
+ 	return rc;
+ }
+@@ -704,6 +857,8 @@ static int cam_res_mgr_shared_pinctrl_init(
+ 	struct cam_res_mgr_dt *dt = &cam_res->dt;
+ 
+ 	cam_res->pinctrl = devm_pinctrl_get(dev);
++	pr_emerg("vamos-cam-res: pctrl-init dev=%s count=%d pinctrl=%pK\n",
++		dev_name(dev), dt->num_shared_pctrl_gpio, cam_res->pinctrl);
+ 	if (IS_ERR_OR_NULL(cam_res->pinctrl)) {
+ 		CAM_ERR(CAM_RES, "Pinctrl not available");
+ 		return -EINVAL;
+@@ -724,6 +879,9 @@ static int cam_res_mgr_shared_pinctrl_init(
+ 			"_suspend");
+ 		CAM_DBG(CAM_RES, "pctrl_suspend at index: %d name: %s",
+ 			i, pctrl_suspend);
++		pr_emerg("vamos-cam-res: pctrl-init lookup idx=%d gpio=%u active=%s suspend=%s\n",
++			i, dt->shared_pctrl_gpio[i],
++			pctrl_active, pctrl_suspend);
+ 		cam_res->pctrl_res[i].active =
+ 			pinctrl_lookup_state(cam_res->pinctrl,
+ 			pctrl_active);
+@@ -741,9 +899,15 @@ static int cam_res_mgr_shared_pinctrl_init(
+ 			return -EINVAL;
+ 		}
+ 		cam_res->pctrl_res[i].pstatus = PINCTRL_STATUS_GOT;
++		pr_emerg("vamos-cam-res: pctrl-init got idx=%d active=%pK suspend=%pK status=%d\n",
++			i, cam_res->pctrl_res[i].active,
++			cam_res->pctrl_res[i].suspend,
++			cam_res->pctrl_res[i].pstatus);
+ 	}
+ 
+ 	cam_res->pstatus = PINCTRL_STATUS_GOT;
++	pr_emerg("vamos-cam-res: pctrl-init complete status=%d\n",
++		cam_res->pstatus);
+ 
+ 	return 0;
+ }
+@@ -758,10 +922,13 @@ static int cam_res_mgr_parse_dt_shared_gpio(
+ 	of_node = dev->of_node;
+ 	dt->num_shared_gpio = of_property_count_u32_elems(of_node,
+ 		"gpios-shared");
++	pr_emerg("vamos-cam-res: parse shared-gpio dev=%s count=%d\n",
++		dev_name(dev), dt->num_shared_gpio);
+ 
+ 	if (dt->num_shared_gpio <= 0) {
+ 		CAM_DBG(CAM_RES,
+ 			"Not found any shared gpio");
++		pr_emerg("vamos-cam-res: parse shared-gpio none rc=-ENODEV\n");
+ 		return -ENODEV;
+ 	}
+ 
+@@ -777,10 +944,15 @@ static int cam_res_mgr_parse_dt_shared_gpio(
+ 		dt->shared_gpio, dt->num_shared_gpio);
+ 	if (rc) {
+ 		CAM_ERR(CAM_RES, "Get shared gpio array failed.");
++		pr_emerg("vamos-cam-res: parse shared-gpio read failed rc=%d\n",
++			rc);
+ 		return -EINVAL;
+ 	}
++	for (rc = 0; rc < dt->num_shared_gpio; rc++)
++		pr_emerg("vamos-cam-res: parse shared-gpio[%d]=%u\n",
++			rc, dt->shared_gpio[rc]);
+ 
+-	return rc;
++	return 0;
+ }
+ 
+ static int cam_res_mgr_parse_dt_shared_pinctrl_gpio(
+@@ -794,10 +966,13 @@ static int cam_res_mgr_parse_dt_shared_pinctrl_gpio(
+ 	of_node = dev->of_node;
+ 	dt->num_shared_pctrl_gpio = of_property_count_u32_elems(of_node,
+ 		"gpios-shared-pinctrl");
++	pr_emerg("vamos-cam-res: parse shared-pinctrl dev=%s count=%d\n",
++		dev_name(dev), dt->num_shared_pctrl_gpio);
+ 
+ 	if (dt->num_shared_pctrl_gpio <= 0) {
+ 		CAM_DBG(CAM_RES,
+ 			"Not found any shared pinctrl res");
++		pr_emerg("vamos-cam-res: parse shared-pinctrl none rc=-ENODEV\n");
+ 		return -ENODEV;
+ 	}
+ 
+@@ -810,6 +985,8 @@ static int cam_res_mgr_parse_dt_shared_pinctrl_gpio(
+ 
+ 	pinctrl_name_nodes = of_property_count_strings(of_node,
+ 		"shared-pctrl-gpio-names");
++	pr_emerg("vamos-cam-res: parse shared-pinctrl names=%d count=%d\n",
++		pinctrl_name_nodes, dt->num_shared_pctrl_gpio);
+ 
+ 	if (pinctrl_name_nodes != dt->num_shared_pctrl_gpio) {
+ 		CAM_ERR(CAM_RES,
+@@ -826,6 +1003,8 @@ static int cam_res_mgr_parse_dt_shared_pinctrl_gpio(
+ 		dt->shared_pctrl_gpio, dt->num_shared_pctrl_gpio);
+ 	if (rc) {
+ 		CAM_ERR(CAM_RES, "Get shared pinctrl gpio array failed.");
++		pr_emerg("vamos-cam-res: parse shared-pinctrl gpio read failed rc=%d\n",
++			rc);
+ 		return -EINVAL;
+ 	}
+ 
+@@ -835,6 +1014,9 @@ static int cam_res_mgr_parse_dt_shared_pinctrl_gpio(
+ 			i, &(dt->pctrl_name[i]));
+ 		CAM_DBG(CAM_RES, "shared-pctrl-gpio-names[%d] = %s",
+ 			i, dt->pctrl_name[i]);
++		pr_emerg("vamos-cam-res: parse shared-pinctrl[%d]=%u name=%s rc=%d\n",
++			i, dt->shared_pctrl_gpio[i],
++			dt->pctrl_name[i] ?: "<null>", rc);
+ 		if (rc) {
+ 			CAM_ERR(CAM_RES,
+ 				"i= %d pinctrl_name_nodes= %d reading clock-names failed",
+@@ -851,6 +1033,7 @@ static int cam_res_mgr_parse_dt(struct device *dev)
+ 	int rc = 0;
+ 
+ 	rc = cam_res_mgr_parse_dt_shared_gpio(dev);
++	pr_emerg("vamos-cam-res: parse dt shared-gpio rc=%d\n", rc);
+ 	if (rc) {
+ 		if (rc == -ENODEV) {
+ 			CAM_DBG(CAM_RES,
+@@ -863,6 +1046,7 @@ static int cam_res_mgr_parse_dt(struct device *dev)
+ 	}
+ 
+ 	rc = cam_res_mgr_parse_dt_shared_pinctrl_gpio(dev);
++	pr_emerg("vamos-cam-res: parse dt shared-pinctrl rc=%d\n", rc);
+ 	if (rc) {
+ 		if (rc == -ENODEV) {
+ 			CAM_DBG(CAM_RES,
+@@ -875,6 +1059,8 @@ static int cam_res_mgr_parse_dt(struct device *dev)
+ 	} else {
+ 		/* When shared pinctrl is detected do the init */
+ 		rc = cam_res_mgr_shared_pinctrl_init(dev);
++		pr_emerg("vamos-cam-res: parse dt shared-pinctrl init rc=%d\n",
++			rc);
+ 		if (rc) {
+ 			CAM_ERR(CAM_RES, "Pinctrl init failed rc: %d", rc);
+ 			return rc;
+@@ -898,10 +1084,13 @@ static int cam_res_mgr_component_bind(struct device *dev,
+ 	cam_res->dev = &pdev->dev;
+ 
+ 	CAM_DBG(CAM_RES, "ENTER");
++	pr_emerg("vamos-cam-res: bind enter dev=%s of_node=%pOF\n",
++		dev_name(&pdev->dev), pdev->dev.of_node);
+ 	rc = cam_res_mgr_parse_dt(&pdev->dev);
+ 	if (rc) {
+ 		CAM_ERR(CAM_RES,
+ 			"Error in parsing device tree, rc: %d", rc);
++		pr_emerg("vamos-cam-res: bind parse failed rc=%d\n", rc);
+ 		kfree(cam_res);
+ 		return rc;
+ 	}
+@@ -913,6 +1102,10 @@ static int cam_res_mgr_component_bind(struct device *dev,
+ 		CAM_DBG(CAM_RES, "Disable shared gpio support.");
+ 		cam_res->shared_gpio_enabled = false;
+ 	}
++	pr_emerg("vamos-cam-res: bind parsed shared_gpio=%d shared_pctrl=%d enabled=%d\n",
++		cam_res->dt.num_shared_gpio,
++		cam_res->dt.num_shared_pctrl_gpio,
++		cam_res->shared_gpio_enabled);
+ 
+ 	mutex_init(&cam_res->flash_res_lock);
+ 	mutex_init(&cam_res->gpio_res_lock);
+@@ -921,6 +1114,7 @@ static int cam_res_mgr_component_bind(struct device *dev,
+ 	INIT_LIST_HEAD(&cam_res->flash_res_list);
+ 
+ 	CAM_DBG(CAM_RES, "Component bound successfully");
++	cam_res_mgr_dbg_dump_lists_locked("bind-complete");
+ 	return 0;
+ }
+ 
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor/cam_sensor_core.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor/cam_sensor_core.c
+index 338989203..33e1c27c1 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor/cam_sensor_core.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor/cam_sensor_core.c
+@@ -802,12 +802,23 @@ static int cam_sensor_match_id(struct cam_sensor_ctrl_t *s_ctrl)
+ 		return -EINVAL;
+ 	}
+ 
++	pr_emerg("vamos-cam-sensor: match_id read begin slot=%d master=%d slave=0x%x reg=0x%x addr_type=%u data_type=%u expected=0x%x\n",
++		s_ctrl->soc_info.index, s_ctrl->cci_i2c_master,
++		slave_info->sensor_slave_addr,
++		slave_info->sensor_id_reg_addr,
++		s_ctrl->sensor_probe_addr_type,
++		s_ctrl->sensor_probe_data_type,
++		slave_info->sensor_id);
+ 	rc = camera_io_dev_read(
+ 		&(s_ctrl->io_master_info),
+ 		slave_info->sensor_id_reg_addr,
+ 		&chipid,
+ 		s_ctrl->sensor_probe_addr_type,
+ 		s_ctrl->sensor_probe_data_type);
++	pr_emerg("vamos-cam-sensor: match_id read end slot=%d rc=%d chipid=0x%x masked=0x%x expected=0x%x\n",
++		s_ctrl->soc_info.index, rc, chipid,
++		cam_sensor_id_by_mask(s_ctrl, chipid),
++		slave_info->sensor_id);
+ 
+ 	CAM_DBG(CAM_SENSOR, "read id: 0x%x expected id 0x%x:",
+ 		chipid, slave_info->sensor_id);
+@@ -1034,6 +1045,11 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
+ 		struct cam_sensor_acquire_dev sensor_acq_dev;
+ 		struct cam_create_dev_hdl bridge_params;
+ 
++		pr_emerg("vamos-cam-sensor: slot %d acquire enter state=%d probe=%d always_on=%d dev_hdl=%d link_hdl=%d\n",
++			s_ctrl->soc_info.index, s_ctrl->sensor_state,
++			s_ctrl->is_probe_succeed, s_ctrl->is_always_on,
++			s_ctrl->bridge_intf.device_hdl,
++			s_ctrl->bridge_intf.link_hdl);
+ 		if ((s_ctrl->is_probe_succeed == 0) ||
+ 			(s_ctrl->sensor_state != CAM_SENSOR_INIT)) {
+ 			CAM_WARN(CAM_SENSOR,
+@@ -1084,7 +1100,11 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
+ 		}
+ 
+ 		if (!s_ctrl->is_always_on) {
++			pr_emerg("vamos-cam-sensor: slot %d acquire power_up begin\n",
++				s_ctrl->soc_info.index);
+ 			rc = cam_sensor_power_up(s_ctrl);
++			pr_emerg("vamos-cam-sensor: slot %d acquire power_up end rc=%d\n",
++				s_ctrl->soc_info.index, rc);
+ 			if (rc < 0) {
+ 				CAM_ERR(CAM_SENSOR, "Sensor Power up failed");
+ 				goto release_mutex;
+@@ -1093,6 +1113,10 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
+ 
+ 		s_ctrl->sensor_state = CAM_SENSOR_ACQUIRE;
+ 		s_ctrl->last_flush_req = 0;
++		pr_emerg("vamos-cam-sensor: slot %d acquire success state=%d device_hdl=%d session=%d\n",
++			s_ctrl->soc_info.index, s_ctrl->sensor_state,
++			s_ctrl->bridge_intf.device_hdl,
++			s_ctrl->bridge_intf.session_hdl);
+ 		CAM_INFO(CAM_SENSOR,
+ 			"CAM_ACQUIRE_DEV Success, sensor_id:0x%x,sensor_slave_addr:0x%x, is always on: %d",
+ 			s_ctrl->sensordata->slave_info.sensor_id,
+@@ -1101,6 +1125,11 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
+ 	}
+ 		break;
+ 	case CAM_RELEASE_DEV: {
++		pr_emerg("vamos-cam-sensor: slot %d release enter state=%d always_on=%d dev_hdl=%d link_hdl=%d\n",
++			s_ctrl->soc_info.index, s_ctrl->sensor_state,
++			s_ctrl->is_always_on,
++			s_ctrl->bridge_intf.device_hdl,
++			s_ctrl->bridge_intf.link_hdl);
+ 		if ((s_ctrl->sensor_state == CAM_SENSOR_INIT) ||
+ 			(s_ctrl->sensor_state == CAM_SENSOR_START)) {
+ 			rc = -EINVAL;
+@@ -1120,7 +1149,11 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
+ 		}
+ 
+ 		if (!s_ctrl->is_always_on) {
++			pr_emerg("vamos-cam-sensor: slot %d release power_down begin\n",
++				s_ctrl->soc_info.index);
+ 			rc = cam_sensor_power_down(s_ctrl);
++			pr_emerg("vamos-cam-sensor: slot %d release power_down end rc=%d\n",
++				s_ctrl->soc_info.index, rc);
+ 			if (rc < 0) {
+ 				CAM_ERR(CAM_SENSOR, "Sensor Power Down failed");
+ 				goto release_mutex;
+@@ -1146,6 +1179,8 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
+ 		s_ctrl->bridge_intf.session_hdl = -1;
+ 
+ 		s_ctrl->sensor_state = CAM_SENSOR_INIT;
++		pr_emerg("vamos-cam-sensor: slot %d release success state=%d\n",
++			s_ctrl->soc_info.index, s_ctrl->sensor_state);
+ 		CAM_INFO(CAM_SENSOR,
+ 			"CAM_RELEASE_DEV Success, sensor_id:0x%x,sensor_slave_addr:0x%x",
+ 			s_ctrl->sensordata->slave_info.sensor_id,
+@@ -1169,6 +1204,9 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
+ 	}
+ 	case CAM_START_DEV: {
+ 		struct cam_req_mgr_timer_notify timer;
++		pr_emerg("vamos-cam-sensor: slot %d start enter state=%d streamon_valid=%d\n",
++			s_ctrl->soc_info.index, s_ctrl->sensor_state,
++			s_ctrl->i2c_data.streamon_settings.is_settings_valid);
+ 		if ((s_ctrl->sensor_state == CAM_SENSOR_INIT) ||
+ 			(s_ctrl->sensor_state == CAM_SENSOR_START)) {
+ 			rc = -EINVAL;
+@@ -1189,6 +1227,8 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
+ 			}
+ 		}
+ 		s_ctrl->sensor_state = CAM_SENSOR_START;
++		pr_emerg("vamos-cam-sensor: slot %d start state=%d\n",
++			s_ctrl->soc_info.index, s_ctrl->sensor_state);
+ 
+ 		if (s_ctrl->bridge_intf.crm_cb &&
+ 			s_ctrl->bridge_intf.crm_cb->notify_timer) {
+@@ -1211,6 +1251,9 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
+ 	}
+ 		break;
+ 	case CAM_STOP_DEV: {
++		pr_emerg("vamos-cam-sensor: slot %d stop enter state=%d streamoff_valid=%d\n",
++			s_ctrl->soc_info.index, s_ctrl->sensor_state,
++			s_ctrl->i2c_data.streamoff_settings.is_settings_valid);
+ 		if (s_ctrl->sensor_state != CAM_SENSOR_START) {
+ 			rc = -EINVAL;
+ 			CAM_WARN(CAM_SENSOR,
+@@ -1232,6 +1275,8 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
+ 		cam_sensor_release_per_frame_resource(s_ctrl);
+ 		s_ctrl->last_flush_req = 0;
+ 		s_ctrl->sensor_state = CAM_SENSOR_ACQUIRE;
++		pr_emerg("vamos-cam-sensor: slot %d stop success state=%d\n",
++			s_ctrl->soc_info.index, s_ctrl->sensor_state);
+ 		CAM_INFO(CAM_SENSOR,
+ 			"CAM_STOP_DEV Success, sensor_id:0x%x,sensor_slave_addr:0x%x",
+ 			s_ctrl->sensordata->slave_info.sensor_id,
+@@ -1239,7 +1284,17 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
+ 	}
+ 		break;
+ 	case CAM_CONFIG_DEV: {
++		pr_emerg("vamos-cam-sensor: slot %d config enter state=%d init_valid=%d cfg_valid=%d read_valid=%d\n",
++			s_ctrl->soc_info.index, s_ctrl->sensor_state,
++			s_ctrl->i2c_data.init_settings.is_settings_valid,
++			s_ctrl->i2c_data.config_settings.is_settings_valid,
++			s_ctrl->i2c_data.read_settings.is_settings_valid);
+ 		rc = cam_sensor_i2c_pkt_parse(s_ctrl, arg);
++		pr_emerg("vamos-cam-sensor: slot %d config parse rc=%d init_valid=%d cfg_valid=%d read_valid=%d\n",
++			s_ctrl->soc_info.index, rc,
++			s_ctrl->i2c_data.init_settings.is_settings_valid,
++			s_ctrl->i2c_data.config_settings.is_settings_valid,
++			s_ctrl->i2c_data.read_settings.is_settings_valid);
+ 		if (rc < 0) {
+ 			CAM_ERR(CAM_SENSOR, "Failed i2c pkt parse: %d", rc);
+ 			goto release_mutex;
+@@ -1251,6 +1306,8 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
+ 				CAM_SENSOR_PACKET_OPCODE_SENSOR_INITIAL_CONFIG;
+ 			rc = cam_sensor_apply_settings(s_ctrl, 0,
+ 				pkt_opcode);
++			pr_emerg("vamos-cam-sensor: slot %d config init apply rc=%d opcode=%d\n",
++				s_ctrl->soc_info.index, rc, pkt_opcode);
+ 
+ 			if ((rc == -EAGAIN) &&
+ 			(s_ctrl->io_master_info.master_type == CCI_MASTER)) {
+@@ -1262,6 +1319,8 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
+ 				usleep_range(1000, 1010);
+ 				rc = cam_sensor_apply_settings(s_ctrl, 0,
+ 					pkt_opcode);
++				pr_emerg("vamos-cam-sensor: slot %d config init retry rc=%d\n",
++					s_ctrl->soc_info.index, rc);
+ 			}
+ 			s_ctrl->i2c_data.init_settings.request_id = -1;
+ 
+@@ -1284,6 +1343,8 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
+ 			(s_ctrl->i2c_data.config_settings.request_id == 0)) {
+ 			rc = cam_sensor_apply_settings(s_ctrl, 0,
+ 				CAM_SENSOR_PACKET_OPCODE_SENSOR_CONFIG);
++			pr_emerg("vamos-cam-sensor: slot %d config apply rc=%d\n",
++				s_ctrl->soc_info.index, rc);
+ 
+ 			s_ctrl->i2c_data.config_settings.request_id = -1;
+ 
+@@ -1306,6 +1367,8 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
+ 		if (s_ctrl->i2c_data.read_settings.is_settings_valid) {
+ 			rc = cam_sensor_apply_settings(s_ctrl, 0,
+ 				CAM_SENSOR_PACKET_OPCODE_SENSOR_READ);
++			pr_emerg("vamos-cam-sensor: slot %d config read apply rc=%d\n",
++				s_ctrl->soc_info.index, rc);
+ 			if (rc < 0) {
+ 				CAM_ERR(CAM_SENSOR,
+ 					"cannot apply read settings");
+@@ -1450,13 +1513,32 @@ int cam_sensor_power_up(struct cam_sensor_ctrl_t *s_ctrl)
+ 		}
+ 	}
+ 
++	pr_emerg("vamos-cam-sensor: slot %d power_up wrapper enter master=%d slave=0x%x state=%d always_on=%d\n",
++		s_ctrl->soc_info.index, s_ctrl->cci_i2c_master,
++		slave_info->sensor_slave_addr, s_ctrl->sensor_state,
++		s_ctrl->is_always_on);
+ 	rc = cam_sensor_core_power_up(power_info, soc_info);
++	pr_emerg("vamos-cam-sensor: slot %d power_up core rc=%d\n",
++		s_ctrl->soc_info.index, rc);
+ 	if (rc < 0) {
+ 		CAM_ERR(CAM_SENSOR, "power up the core is failed:%d", rc);
+ 		return rc;
+ 	}
+ 
++	pr_emerg("vamos-cam-sensor: slot %d camera_io_init begin master_type=%d cci_master=%d sid=0x%x retries=%u freq=%u\n",
++		s_ctrl->soc_info.index,
++		s_ctrl->io_master_info.master_type,
++		s_ctrl->io_master_info.cci_client ?
++			s_ctrl->io_master_info.cci_client->cci_i2c_master : -1,
++		s_ctrl->io_master_info.cci_client ?
++			s_ctrl->io_master_info.cci_client->sid : 0,
++		s_ctrl->io_master_info.cci_client ?
++			s_ctrl->io_master_info.cci_client->retries : 0,
++		s_ctrl->io_master_info.cci_client ?
++			s_ctrl->io_master_info.cci_client->i2c_freq_mode : 0);
+ 	rc = camera_io_init(&(s_ctrl->io_master_info));
++	pr_emerg("vamos-cam-sensor: slot %d camera_io_init end rc=%d\n",
++		s_ctrl->soc_info.index, rc);
+ 	if (rc < 0) {
+ 		CAM_ERR(CAM_SENSOR, "cci_init failed: rc: %d", rc);
+ 		goto cci_failure;
+@@ -1464,8 +1546,12 @@ int cam_sensor_power_up(struct cam_sensor_ctrl_t *s_ctrl)
+ 
+ 	return rc;
+ cci_failure:
++	pr_emerg("vamos-cam-sensor: slot %d cci_failure power_down begin\n",
++		s_ctrl->soc_info.index);
+ 	if (cam_sensor_util_power_down(power_info, soc_info))
+ 		CAM_ERR(CAM_SENSOR, "power down failure");
++	pr_emerg("vamos-cam-sensor: slot %d cci_failure power_down done\n",
++		s_ctrl->soc_info.index);
+ 
+ 	return rc;
+ 
+@@ -1489,7 +1575,12 @@ int cam_sensor_power_down(struct cam_sensor_ctrl_t *s_ctrl)
+ 		CAM_ERR(CAM_SENSOR, "failed: power_info %pK", power_info);
+ 		return -EINVAL;
+ 	}
++	pr_emerg("vamos-cam-sensor: slot %d power_down wrapper enter state=%d always_on=%d master_type=%d\n",
++		s_ctrl->soc_info.index, s_ctrl->sensor_state,
++		s_ctrl->is_always_on, s_ctrl->io_master_info.master_type);
+ 	rc = cam_sensor_util_power_down(power_info, soc_info);
++	pr_emerg("vamos-cam-sensor: slot %d power_down core rc=%d\n",
++		s_ctrl->soc_info.index, rc);
+ 	if (rc < 0) {
+ 		CAM_ERR(CAM_SENSOR, "power down the core is failed:%d", rc);
+ 		return rc;
+@@ -1505,7 +1596,11 @@ int cam_sensor_power_down(struct cam_sensor_ctrl_t *s_ctrl)
+ 		}
+ 	}
+ 
++	pr_emerg("vamos-cam-sensor: slot %d camera_io_release begin\n",
++		s_ctrl->soc_info.index);
+ 	camera_io_release(&(s_ctrl->io_master_info));
++	pr_emerg("vamos-cam-sensor: slot %d camera_io_release end\n",
++		s_ctrl->soc_info.index);
+ 
+ 	return rc;
+ }
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_io/cam_sensor_cci_i2c.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_io/cam_sensor_cci_i2c.c
+index a5e780a2e..c505ad723 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_io/cam_sensor_cci_i2c.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_io/cam_sensor_cci_i2c.c
+@@ -13,7 +13,7 @@ int32_t cam_cci_i2c_read(struct cam_sensor_cci_client *cci_client,
+ 	enum camera_sensor_i2c_type data_type)
+ {
+ 	int32_t rc = -EINVAL;
+-	unsigned char buf[CAMERA_SENSOR_I2C_TYPE_DWORD];
++	unsigned char buf[CAMERA_SENSOR_I2C_TYPE_DWORD] = {0};
+ 	struct cam_cci_ctrl cci_ctrl;
+ 
+ 	if (addr_type <= CAMERA_SENSOR_I2C_TYPE_INVALID
+@@ -22,6 +22,14 @@ int32_t cam_cci_i2c_read(struct cam_sensor_cci_client *cci_client,
+ 		|| data_type >= CAMERA_SENSOR_I2C_TYPE_MAX)
+ 		return rc;
+ 
++	pr_emerg("vamos-cam-cci-i2c: read enter cci_dev=%u master=%d sid=0x%x addr=0x%x addr_type=%u data_type=%u freq=%u retries=%u subdev=%pK\n",
++		cci_client ? cci_client->cci_device : 0,
++		cci_client ? cci_client->cci_i2c_master : -1,
++		cci_client ? cci_client->sid : 0,
++		addr, addr_type, data_type,
++		cci_client ? cci_client->i2c_freq_mode : 0,
++		cci_client ? cci_client->retries : 0,
++		cci_client ? cci_client->cci_subdev : NULL);
+ 	cci_ctrl.cmd = MSM_CCI_I2C_READ;
+ 	cci_ctrl.cci_info = cci_client;
+ 	cci_ctrl.cfg.cci_i2c_read_cfg.addr = addr;
+@@ -31,6 +39,8 @@ int32_t cam_cci_i2c_read(struct cam_sensor_cci_client *cci_client,
+ 	cci_ctrl.cfg.cci_i2c_read_cfg.num_byte = data_type;
+ 	rc = v4l2_subdev_call(cci_client->cci_subdev,
+ 		core, ioctl, VIDIOC_MSM_CCI_CFG, &cci_ctrl);
++	pr_emerg("vamos-cam-cci-i2c: read ioctl done rc=%d status=%d addr=0x%x raw0=0x%x raw1=0x%x raw2=0x%x raw3=0x%x\n",
++		rc, cci_ctrl.status, addr, buf[0], buf[1], buf[2], buf[3]);
+ 	if (rc < 0) {
+ 		CAM_ERR(CAM_SENSOR, "rc = %d", rc);
+ 		return rc;
+@@ -47,6 +57,8 @@ int32_t cam_cci_i2c_read(struct cam_sensor_cci_client *cci_client,
+ 		*data = buf[0] << 24 | buf[1] << 16 |
+ 			buf[2] << 8 | buf[3];
+ 
++	pr_emerg("vamos-cam-cci-i2c: read exit addr=0x%x rc=%d data=0x%x\n",
++		addr, rc, *data);
+ 	return rc;
+ }
+ 
+@@ -81,9 +93,18 @@ int32_t cam_camera_cci_i2c_read_seq(struct cam_sensor_cci_client *cci_client,
+ 	cci_ctrl.cfg.cci_i2c_read_cfg.data = buf;
+ 	cci_ctrl.cfg.cci_i2c_read_cfg.num_byte = num_byte;
+ 	cci_ctrl.status = -EFAULT;
++	pr_emerg("vamos-cam-cci-i2c: read-seq enter cci_dev=%u master=%d sid=0x%x addr=0x%x num=%u addr_type=%u data_type=%u\n",
++		cci_client ? cci_client->cci_device : 0,
++		cci_client ? cci_client->cci_i2c_master : -1,
++		cci_client ? cci_client->sid : 0,
++		addr, num_byte, addr_type, data_type);
+ 	rc = v4l2_subdev_call(cci_client->cci_subdev,
+ 		core, ioctl, VIDIOC_MSM_CCI_CFG, &cci_ctrl);
+ 	rc = cci_ctrl.status;
++	pr_emerg("vamos-cam-cci-i2c: read-seq exit addr=0x%x num=%u rc=%d first=0x%x second=0x%x\n",
++		addr, num_byte, rc,
++		num_byte > 0 ? buf[0] : 0,
++		num_byte > 1 ? buf[1] : 0);
+ 	CAM_DBG(CAM_SENSOR, "addr = 0x%x, rc = %d", addr, rc);
+ 	for (i = 0; i < num_byte; i++) {
+ 		data[i] = buf[i];
+@@ -110,6 +131,15 @@ static int32_t cam_cci_i2c_write_table_cmd(
+ 		|| write_setting->data_type >= CAMERA_SENSOR_I2C_TYPE_MAX)
+ 		return rc;
+ 
++	pr_emerg("vamos-cam-cci-i2c: write-table enter cmd=%d cci_dev=%u master=%d sid=0x%x size=%u addr_type=%u data_type=%u delay=%u first_addr=0x%x first_data=0x%x\n",
++		cmd,
++		client->cci_client ? client->cci_client->cci_device : 0,
++		client->cci_client ? client->cci_client->cci_i2c_master : -1,
++		client->cci_client ? client->cci_client->sid : 0,
++		write_setting->size, write_setting->addr_type,
++		write_setting->data_type, write_setting->delay,
++		write_setting->size ? write_setting->reg_setting[0].reg_addr : 0,
++		write_setting->size ? write_setting->reg_setting[0].reg_data : 0);
+ 	cci_ctrl.cmd = cmd;
+ 	cci_ctrl.cci_info = client->cci_client;
+ 	cci_ctrl.cfg.cci_i2c_write_cfg.reg_setting =
+@@ -119,6 +149,8 @@ static int32_t cam_cci_i2c_write_table_cmd(
+ 	cci_ctrl.cfg.cci_i2c_write_cfg.size = write_setting->size;
+ 	rc = v4l2_subdev_call(client->cci_client->cci_subdev,
+ 		core, ioctl, VIDIOC_MSM_CCI_CFG, &cci_ctrl);
++	pr_emerg("vamos-cam-cci-i2c: write-table ioctl done cmd=%d rc=%d status=%d\n",
++		cmd, rc, cci_ctrl.status);
+ 	if (rc < 0) {
+ 		CAM_ERR(CAM_SENSOR, "Failed rc = %d", rc);
+ 		return rc;
+@@ -130,6 +162,8 @@ static int32_t cam_cci_i2c_write_table_cmd(
+ 		usleep_range(write_setting->delay * 1000, (write_setting->delay
+ 			* 1000) + 1000);
+ 
++	pr_emerg("vamos-cam-cci-i2c: write-table exit cmd=%d rc=%d delay=%u\n",
++		cmd, rc, write_setting->delay);
+ 	return rc;
+ }
+ 
+@@ -222,11 +256,23 @@ int32_t cam_sensor_cci_i2c_util(struct cam_sensor_cci_client *cci_client,
+ 
+ 	cci_ctrl.cmd = cci_cmd;
+ 	cci_ctrl.cci_info = cci_client;
++	pr_emerg("vamos-cam-cci-i2c: util enter cmd=%u cci_dev=%u master=%d sid=0x%x freq=%u retries=%u subdev=%pK\n",
++		cci_cmd,
++		cci_client ? cci_client->cci_device : 0,
++		cci_client ? cci_client->cci_i2c_master : -1,
++		cci_client ? cci_client->sid : 0,
++		cci_client ? cci_client->i2c_freq_mode : 0,
++		cci_client ? cci_client->retries : 0,
++		cci_client ? cci_client->cci_subdev : NULL);
+ 	rc = v4l2_subdev_call(cci_client->cci_subdev,
+ 		core, ioctl, VIDIOC_MSM_CCI_CFG, &cci_ctrl);
++	pr_emerg("vamos-cam-cci-i2c: util ioctl done cmd=%u rc=%d status=%d\n",
++		cci_cmd, rc, cci_ctrl.status);
+ 	if (rc < 0) {
+ 		CAM_ERR(CAM_SENSOR, "Failed rc = %d", rc);
+ 		return rc;
+ 	}
++	pr_emerg("vamos-cam-cci-i2c: util exit cmd=%u status=%d\n",
++		cci_cmd, cci_ctrl.status);
+ 	return cci_ctrl.status;
+ }
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_io/cam_sensor_io.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_io/cam_sensor_io.c
+index 108c47923..eb4515daa 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_io/cam_sensor_io.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_io/cam_sensor_io.c
+@@ -73,6 +73,9 @@ int32_t camera_io_dev_read(struct camera_io_master *io_master_info,
+ 		return -EINVAL;
+ 	}
+ 
++	pr_emerg("vamos-cam-io: read enter master_type=%d addr=0x%x addr_type=%u data_type=%u cci=%pK\n",
++		io_master_info->master_type, addr, addr_type, data_type,
++		io_master_info->cci_client);
+ 	if (io_master_info->master_type == CCI_MASTER) {
+ 		return cam_cci_i2c_read(io_master_info->cci_client,
+ 			addr, data, addr_type, data_type);
+@@ -130,6 +133,12 @@ int32_t camera_io_dev_write(struct camera_io_master *io_master_info,
+ 		return -EINVAL;
+ 	}
+ 
++	pr_emerg("vamos-cam-io: write enter master_type=%d size=%u addr_type=%u data_type=%u delay=%u first_addr=0x%x first_data=0x%x\n",
++		io_master_info->master_type, write_setting->size,
++		write_setting->addr_type, write_setting->data_type,
++		write_setting->delay,
++		write_setting->size ? write_setting->reg_setting[0].reg_addr : 0,
++		write_setting->size ? write_setting->reg_setting[0].reg_data : 0);
+ 	if (io_master_info->master_type == CCI_MASTER) {
+ 		return cam_cci_i2c_write_table(io_master_info,
+ 			write_setting);
+@@ -162,6 +171,12 @@ int32_t camera_io_dev_write_continuous(struct camera_io_master *io_master_info,
+ 		return -EINVAL;
+ 	}
+ 
++	pr_emerg("vamos-cam-io: write-cont enter master_type=%d size=%u addr_type=%u data_type=%u flag=%u delay=%u first_addr=0x%x first_data=0x%x\n",
++		io_master_info->master_type, write_setting->size,
++		write_setting->addr_type, write_setting->data_type,
++		cam_sensor_i2c_write_flag, write_setting->delay,
++		write_setting->size ? write_setting->reg_setting[0].reg_addr : 0,
++		write_setting->size ? write_setting->reg_setting[0].reg_data : 0);
+ 	if (io_master_info->master_type == CCI_MASTER) {
+ 		return cam_cci_i2c_write_continuous_table(io_master_info,
+ 			write_setting, cam_sensor_i2c_write_flag);
+@@ -185,9 +200,19 @@ int32_t camera_io_init(struct camera_io_master *io_master_info)
+ 		return -EINVAL;
+ 	}
+ 
++	pr_emerg("vamos-cam-io: init enter master_type=%d cci_client=%pK\n",
++		io_master_info->master_type, io_master_info->cci_client);
+ 	if (io_master_info->master_type == CCI_MASTER) {
+ 		io_master_info->cci_client->cci_subdev =
+ 		cam_cci_get_subdev(io_master_info->cci_client->cci_device);
++		pr_emerg("vamos-cam-io: init cci device=%u master=%d sid=0x%x subdev=%pK freq=%u retries=%u id_map=%u\n",
++			io_master_info->cci_client->cci_device,
++			io_master_info->cci_client->cci_i2c_master,
++			io_master_info->cci_client->sid,
++			io_master_info->cci_client->cci_subdev,
++			io_master_info->cci_client->i2c_freq_mode,
++			io_master_info->cci_client->retries,
++			io_master_info->cci_client->id_map);
+ 		return cam_sensor_cci_i2c_util(io_master_info->cci_client,
+ 			MSM_CCI_INIT);
+ 	} else if ((io_master_info->master_type == I2C_MASTER) ||
+@@ -205,7 +230,14 @@ int32_t camera_io_release(struct camera_io_master *io_master_info)
+ 		return -EINVAL;
+ 	}
+ 
++	pr_emerg("vamos-cam-io: release enter master_type=%d cci_client=%pK\n",
++		io_master_info->master_type, io_master_info->cci_client);
+ 	if (io_master_info->master_type == CCI_MASTER) {
++		pr_emerg("vamos-cam-io: release cci device=%u master=%d sid=0x%x subdev=%pK\n",
++			io_master_info->cci_client->cci_device,
++			io_master_info->cci_client->cci_i2c_master,
++			io_master_info->cci_client->sid,
++			io_master_info->cci_client->cci_subdev);
+ 		return cam_sensor_cci_i2c_util(io_master_info->cci_client,
+ 			MSM_CCI_RELEASE);
+ 	} else if ((io_master_info->master_type == I2C_MASTER) ||
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_utils/cam_sensor_util.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_utils/cam_sensor_util.c
+index 6652aa5f6..94b59b2ea 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_utils/cam_sensor_util.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_utils/cam_sensor_util.c
+@@ -1212,11 +1212,17 @@ int cam_sensor_util_request_gpio_table(
+ 
+ 	if (!gpio_conf) {
+ 		CAM_INFO(CAM_SENSOR, "No GPIO data");
++		pr_emerg("vamos-cam-sensor: gpio-table dev=%s gpio_en=%d no gpio_data\n",
++			soc_info->dev ? dev_name(soc_info->dev) : "<null>",
++			gpio_en);
+ 		return 0;
+ 	}
+ 
+ 	if (gpio_conf->cam_gpio_common_tbl_size <= 0) {
+ 		CAM_INFO(CAM_SENSOR, "No GPIO entry");
++		pr_emerg("vamos-cam-sensor: gpio-table dev=%s gpio_en=%d no common entries size=%d\n",
++			soc_info->dev ? dev_name(soc_info->dev) : "<null>",
++			gpio_en, gpio_conf->cam_gpio_common_tbl_size);
+ 		return -EINVAL;
+ 	}
+ 
+@@ -1226,13 +1232,29 @@ int cam_sensor_util_request_gpio_table(
+ 	if (!gpio_tbl || !size) {
+ 		CAM_ERR(CAM_SENSOR, "invalid gpio_tbl %pK / size %d",
+ 			gpio_tbl, size);
++		pr_emerg("vamos-cam-sensor: gpio-table dev=%s gpio_en=%d invalid req_tbl=%pK size=%u common_size=%d\n",
++			soc_info->dev ? dev_name(soc_info->dev) : "<null>",
++			gpio_en, gpio_tbl, size,
++			gpio_conf->cam_gpio_common_tbl_size);
+ 		return -EINVAL;
+ 	}
+ 
++	pr_emerg("vamos-cam-sensor: gpio-table enter dev=%s index=%d gpio_en=%d req_size=%u common_size=%d\n",
++		soc_info->dev ? dev_name(soc_info->dev) : "<null>",
++		soc_info->index, gpio_en, size,
++		gpio_conf->cam_gpio_common_tbl_size);
+ 	for (i = 0; i < size; i++) {
+ 		CAM_DBG(CAM_SENSOR, "%s%d, i: %d, gpio %d dir %lld",
+ 			soc_info->dev_name, soc_info->index, i,
+ 			gpio_tbl[i].gpio, gpio_tbl[i].flags);
++		pr_emerg("vamos-cam-sensor: gpio-table item dev=%s i=%d gpio=%u flags=0x%llx label=%s valid=%d level=%d\n",
++			soc_info->dev ? dev_name(soc_info->dev) : "<null>",
++			i, gpio_tbl[i].gpio,
++			(unsigned long long)gpio_tbl[i].flags,
++			gpio_tbl[i].label ?: "<null>",
++			gpio_is_valid(gpio_tbl[i].gpio),
++			gpio_is_valid(gpio_tbl[i].gpio) ?
++				gpio_get_value_cansleep(gpio_tbl[i].gpio) : -999);
+ 	}
+ 
+ 	if (gpio_en) {
+@@ -1240,6 +1262,13 @@ int cam_sensor_util_request_gpio_table(
+ 			rc = cam_res_mgr_gpio_request(soc_info->dev,
+ 					gpio_tbl[i].gpio,
+ 					gpio_tbl[i].flags, gpio_tbl[i].label);
++			pr_emerg("vamos-cam-sensor: gpio-table request dev=%s i=%d gpio=%u label=%s rc=%d level=%d\n",
++				soc_info->dev ? dev_name(soc_info->dev) : "<null>",
++				i, gpio_tbl[i].gpio,
++				gpio_tbl[i].label ?: "<null>", rc,
++				(!rc && gpio_is_valid(gpio_tbl[i].gpio)) ?
++					gpio_get_value_cansleep(gpio_tbl[i].gpio) :
++					-999);
+ 			if (rc) {
+ 				/*
+ 				 * After GPIO request fails, contine to
+@@ -1251,9 +1280,20 @@ int cam_sensor_util_request_gpio_table(
+ 			}
+ 		}
+ 	} else {
++		for (i = 0; i < size; i++)
++			pr_emerg("vamos-cam-sensor: gpio-table free-pending dev=%s i=%d gpio=%u label=%s level=%d\n",
++				soc_info->dev ? dev_name(soc_info->dev) : "<null>",
++				i, gpio_tbl[i].gpio,
++				gpio_tbl[i].label ?: "<null>",
++				gpio_is_valid(gpio_tbl[i].gpio) ?
++					gpio_get_value_cansleep(gpio_tbl[i].gpio) :
++					-999);
+ 		cam_res_mgr_gpio_free_arry(soc_info->dev, gpio_tbl, size);
+ 	}
+ 
++	pr_emerg("vamos-cam-sensor: gpio-table exit dev=%s gpio_en=%d rc=%d\n",
++		soc_info->dev ? dev_name(soc_info->dev) : "<null>",
++		gpio_en, rc);
+ 	return rc;
+ }
+ 
+@@ -1581,6 +1621,8 @@ int cam_get_dt_power_setting_data(struct device_node *of_node,
+ 	power_info->power_setting_size = count;
+ 
+ 	CAM_DBG(CAM_SENSOR, "qcom,cam-power-seq-type count %d", count);
++	pr_emerg("vamos-cam-sensor: dt-power node=%pOF count=%d\n",
++		of_node, count);
+ 
+ 	if (count <= 0)
+ 		return 0;
+@@ -1613,6 +1655,8 @@ int cam_get_dt_power_setting_data(struct device_node *of_node,
+ 			goto ERROR1;
+ 		}
+ 		CAM_DBG(CAM_SENSOR, "seq_type[%d] %d", i, ps[i].seq_type);
++		pr_emerg("vamos-cam-sensor: dt-power seq[%d] name=%s type=%d\n",
++			i, seq_name, ps[i].seq_type);
+ 	}
+ 
+ 	array = kcalloc(count, sizeof(uint32_t), GFP_KERNEL);
+@@ -1632,6 +1676,8 @@ int cam_get_dt_power_setting_data(struct device_node *of_node,
+ 		ps[i].config_val = array[i];
+ 		CAM_DBG(CAM_SENSOR, "power_setting[%d].config_val = %ld", i,
+ 			ps[i].config_val);
++		pr_emerg("vamos-cam-sensor: dt-power config[%d]=%ld\n",
++			i, ps[i].config_val);
+ 	}
+ 
+ 	rc = of_property_read_u32_array(of_node, "qcom,cam-power-seq-delay",
+@@ -1644,6 +1690,8 @@ int cam_get_dt_power_setting_data(struct device_node *of_node,
+ 		ps[i].delay = array[i];
+ 		CAM_DBG(CAM_SENSOR, "power_setting[%d].delay = %d", i,
+ 			ps[i].delay);
++		pr_emerg("vamos-cam-sensor: dt-power delay[%d]=%u\n",
++			i, ps[i].delay);
+ 	}
+ 	kfree(array);
+ 
+@@ -1662,8 +1710,15 @@ int cam_get_dt_power_setting_data(struct device_node *of_node,
+ 
+ 	for (c = 0; c < count; c++) {
+ 		power_info->power_down_setting[c] = ps[end];
++		pr_emerg("vamos-cam-sensor: dt-power down[%d] seq=%d config=%ld delay=%u\n",
++			c, power_info->power_down_setting[c].seq_type,
++			power_info->power_down_setting[c].config_val,
++			power_info->power_down_setting[c].delay);
+ 		end--;
+ 	}
++	pr_emerg("vamos-cam-sensor: dt-power parsed up=%u down=%u\n",
++		power_info->power_setting_size,
++		power_info->power_down_setting_size);
+ 	return rc;
+ ERROR2:
+ 	kfree(array);
+@@ -1701,6 +1756,8 @@ int cam_sensor_util_init_gpio_pin_tbl(
+ 	}
+ 
+ 	gpio_array_size = gconf->cam_gpio_common_tbl_size;
++	pr_emerg("vamos-cam-sensor: dt-gpio-pin dev=%s node=%pOF common_size=%u\n",
++		dev_name(soc_info->dev), of_node, gpio_array_size);
+ 
+ 	if (!gpio_array_size) {
+ 		CAM_ERR(CAM_SENSOR, "invalid size of gpio table");
+@@ -1729,6 +1786,8 @@ int cam_sensor_util_init_gpio_pin_tbl(
+ 
+ 		CAM_DBG(CAM_SENSOR, "gpio-vana %d",
+ 			gpio_num_info->gpio_num[SENSOR_VANA]);
++		pr_emerg("vamos-cam-sensor: dt-gpio-pin gpio-vana idx=%d gpio=%u\n",
++			val, gpio_num_info->gpio_num[SENSOR_VANA]);
+ 	}
+ 
+ 	rc = of_property_read_u32(of_node, "gpio-vana1", &val);
+@@ -1747,6 +1806,8 @@ int cam_sensor_util_init_gpio_pin_tbl(
+ 
+ 		CAM_DBG(CAM_SENSOR, "gpio-vana1 %d",
+ 			gpio_num_info->gpio_num[SENSOR_VANA1]);
++		pr_emerg("vamos-cam-sensor: dt-gpio-pin gpio-vana1 idx=%d gpio=%u\n",
++			val, gpio_num_info->gpio_num[SENSOR_VANA1]);
+ 	}
+ 
+ 	rc = of_property_read_u32(of_node, "gpio-vio", &val);
+@@ -1764,6 +1825,8 @@ int cam_sensor_util_init_gpio_pin_tbl(
+ 
+ 		CAM_DBG(CAM_SENSOR, "gpio-vio %d",
+ 			gpio_num_info->gpio_num[SENSOR_VIO]);
++		pr_emerg("vamos-cam-sensor: dt-gpio-pin gpio-vio idx=%d gpio=%u\n",
++			val, gpio_num_info->gpio_num[SENSOR_VIO]);
+ 	}
+ 
+ 	rc = of_property_read_u32(of_node, "gpio-vaf", &val);
+@@ -1782,6 +1845,8 @@ int cam_sensor_util_init_gpio_pin_tbl(
+ 
+ 		CAM_DBG(CAM_SENSOR, "gpio-vaf %d",
+ 			gpio_num_info->gpio_num[SENSOR_VAF]);
++		pr_emerg("vamos-cam-sensor: dt-gpio-pin gpio-vaf idx=%d gpio=%u\n",
++			val, gpio_num_info->gpio_num[SENSOR_VAF]);
+ 	}
+ 
+ 	rc = of_property_read_u32(of_node, "gpio-vdig", &val);
+@@ -1800,6 +1865,8 @@ int cam_sensor_util_init_gpio_pin_tbl(
+ 
+ 		CAM_DBG(CAM_SENSOR, "gpio-vdig %d",
+ 				gpio_num_info->gpio_num[SENSOR_VDIG]);
++		pr_emerg("vamos-cam-sensor: dt-gpio-pin gpio-vdig idx=%d gpio=%u\n",
++			val, gpio_num_info->gpio_num[SENSOR_VDIG]);
+ 	}
+ 
+ 	rc = of_property_read_u32(of_node, "gpio-reset", &val);
+@@ -1818,6 +1885,8 @@ int cam_sensor_util_init_gpio_pin_tbl(
+ 
+ 		CAM_DBG(CAM_SENSOR, "gpio-reset %d",
+ 			gpio_num_info->gpio_num[SENSOR_RESET]);
++		pr_emerg("vamos-cam-sensor: dt-gpio-pin gpio-reset idx=%d gpio=%u\n",
++			val, gpio_num_info->gpio_num[SENSOR_RESET]);
+ 	}
+ 
+ 	rc = of_property_read_u32(of_node, "gpio-standby", &val);
+@@ -1837,6 +1906,8 @@ int cam_sensor_util_init_gpio_pin_tbl(
+ 
+ 		CAM_DBG(CAM_SENSOR, "gpio-standby %d",
+ 			gpio_num_info->gpio_num[SENSOR_STANDBY]);
++		pr_emerg("vamos-cam-sensor: dt-gpio-pin gpio-standby idx=%d gpio=%u\n",
++			val, gpio_num_info->gpio_num[SENSOR_STANDBY]);
+ 	}
+ 
+ 	rc = of_property_read_u32(of_node, "gpio-af-pwdm", &val);
+@@ -1856,6 +1927,8 @@ int cam_sensor_util_init_gpio_pin_tbl(
+ 
+ 		CAM_DBG(CAM_SENSOR, "gpio-af-pwdm %d",
+ 			gpio_num_info->gpio_num[SENSOR_VAF_PWDM]);
++		pr_emerg("vamos-cam-sensor: dt-gpio-pin gpio-af-pwdm idx=%d gpio=%u\n",
++			val, gpio_num_info->gpio_num[SENSOR_VAF_PWDM]);
+ 	}
+ 
+ 	rc = of_property_read_u32(of_node, "gpio-custom1", &val);
+@@ -1875,6 +1948,8 @@ int cam_sensor_util_init_gpio_pin_tbl(
+ 
+ 		CAM_DBG(CAM_SENSOR, "gpio-custom1 %d",
+ 			gpio_num_info->gpio_num[SENSOR_CUSTOM_GPIO1]);
++		pr_emerg("vamos-cam-sensor: dt-gpio-pin gpio-custom1 idx=%d gpio=%u\n",
++			val, gpio_num_info->gpio_num[SENSOR_CUSTOM_GPIO1]);
+ 	}
+ 
+ 	rc = of_property_read_u32(of_node, "gpio-custom2", &val);
+@@ -1894,10 +1969,17 @@ int cam_sensor_util_init_gpio_pin_tbl(
+ 
+ 		CAM_DBG(CAM_SENSOR, "gpio-custom2 %d",
+ 			gpio_num_info->gpio_num[SENSOR_CUSTOM_GPIO2]);
++		pr_emerg("vamos-cam-sensor: dt-gpio-pin gpio-custom2 idx=%d gpio=%u\n",
++			val, gpio_num_info->gpio_num[SENSOR_CUSTOM_GPIO2]);
+ 	} else {
+ 		rc = 0;
+ 	}
+ 
++	pr_emerg("vamos-cam-sensor: dt-gpio-pin done dev=%s rc=%d vana=%u reset=%u mclk_valid=%u\n",
++		dev_name(soc_info->dev), rc,
++		gpio_num_info->gpio_num[SENSOR_VANA],
++		gpio_num_info->gpio_num[SENSOR_RESET],
++		gpio_num_info->valid[SENSOR_MCLK]);
+ 	return rc;
+ 
+ free_gpio_info:
+@@ -1911,13 +1993,20 @@ int msm_camera_pinctrl_init(
+ {
+ 
+ 	sensor_pctrl->pinctrl = devm_pinctrl_get(dev);
++	pr_emerg("vamos-cam-sensor: pinctrl-init dev=%s pinctrl=%pK\n",
++		dev_name(dev), sensor_pctrl->pinctrl);
+ 	if (IS_ERR_OR_NULL(sensor_pctrl->pinctrl)) {
+ 		CAM_DBG(CAM_SENSOR, "Getting pinctrl handle failed");
++		pr_emerg("vamos-cam-sensor: pinctrl-init dev=%s get failed\n",
++			dev_name(dev));
+ 		return -EINVAL;
+ 	}
+ 	sensor_pctrl->gpio_state_active =
+ 		pinctrl_lookup_state(sensor_pctrl->pinctrl,
+ 				CAM_SENSOR_PINCTRL_STATE_DEFAULT);
++	pr_emerg("vamos-cam-sensor: pinctrl-init dev=%s active=%pK name=%s\n",
++		dev_name(dev), sensor_pctrl->gpio_state_active,
++		CAM_SENSOR_PINCTRL_STATE_DEFAULT);
+ 	if (IS_ERR_OR_NULL(sensor_pctrl->gpio_state_active)) {
+ 		CAM_ERR(CAM_SENSOR,
+ 			"Failed to get the active state pinctrl handle");
+@@ -1926,6 +2015,9 @@ int msm_camera_pinctrl_init(
+ 	sensor_pctrl->gpio_state_suspend
+ 		= pinctrl_lookup_state(sensor_pctrl->pinctrl,
+ 				CAM_SENSOR_PINCTRL_STATE_SLEEP);
++	pr_emerg("vamos-cam-sensor: pinctrl-init dev=%s suspend=%pK name=%s\n",
++		dev_name(dev), sensor_pctrl->gpio_state_suspend,
++		CAM_SENSOR_PINCTRL_STATE_SLEEP);
+ 	if (IS_ERR_OR_NULL(sensor_pctrl->gpio_state_suspend)) {
+ 		CAM_ERR(CAM_SENSOR,
+ 			"Failed to get the suspend state pinctrl handle");
+@@ -1979,6 +2071,10 @@ static int msm_cam_sensor_handle_reg_gpio(int seq_type,
+ 		cam_res_mgr_gpio_set_value(
+ 			gpio_num_info->gpio_num
+ 			[gpio_offset], val);
++		pr_emerg("vamos-cam-sensor: reg-gpio seq=%d gpio=%u after=%d\n",
++			seq_type, gpio_num_info->gpio_num[gpio_offset],
++			gpio_get_value_cansleep(
++				gpio_num_info->gpio_num[gpio_offset]));
+ 	}
+ 
+ 	return 0;
+@@ -2079,6 +2175,9 @@ int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
+ 	struct msm_camera_gpio_num_info *gpio_num_info = NULL;
+ 
+ 	CAM_DBG(CAM_SENSOR, "Enter");
++	pr_emerg("vamos-cam-sensor: power_up enter dev=%s index=%d ctrl=%pK soc=%pK\n",
++		(soc_info && soc_info->dev) ? dev_name(soc_info->dev) : "<null>",
++		soc_info ? soc_info->index : -1, ctrl, soc_info);
+ 	if (!ctrl) {
+ 		CAM_ERR(CAM_SENSOR, "Invalid ctrl handle");
+ 		return -EINVAL;
+@@ -2100,11 +2199,16 @@ int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
+ 	} else {
+ 		ctrl->cam_pinctrl_status = 1;
+ 	}
++	pr_emerg("vamos-cam-sensor: power_up pinctrl init ret=%d status=%d dev=%s\n",
++		ret, ctrl->cam_pinctrl_status,
++		soc_info->dev ? dev_name(soc_info->dev) : "<null>");
+ 
+ 	rc = cam_sensor_util_request_gpio_table(soc_info, 1);
+ 	if (rc < 0) {
+ 		no_gpio = rc;
+ 	}
++	pr_emerg("vamos-cam-sensor: power_up request-gpio rc=%d no_gpio=%d dev=%s\n",
++		rc, no_gpio, soc_info->dev ? dev_name(soc_info->dev) : "<null>");
+ 
+ 	if (ctrl->cam_pinctrl_status) {
+ 		ret = pinctrl_select_state(
+@@ -2112,6 +2216,8 @@ int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
+ 			ctrl->pinctrl_info.gpio_state_active);
+ 		if (ret)
+ 			CAM_ERR(CAM_SENSOR, "cannot set pin to active state");
++		pr_emerg("vamos-cam-sensor: power_up pinctrl active ret=%d dev=%s\n",
++			ret, soc_info->dev ? dev_name(soc_info->dev) : "<null>");
+ 	}
+ 
+ 	CAM_DBG(CAM_SENSOR, "power setting size: %d", ctrl->power_setting_size);
+@@ -2335,16 +2441,29 @@ int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
+ 		else if (power_setting->delay)
+ 			usleep_range(power_setting->delay * 1000,
+ 				(power_setting->delay * 1000) + 1000);
++		if (power_setting->delay)
++			pr_emerg("vamos-cam-sensor: power_up delay idx=%d delay_ms=%u done\n",
++				index, power_setting->delay);
++		pr_emerg("vamos-cam-sensor: power_up step done idx=%d seq=%d rc=%d\n",
++			index, power_setting->seq_type, rc);
+ 	}
+ 
++	pr_emerg("vamos-cam-sensor: power_up success dev=%s\n",
++		soc_info->dev ? dev_name(soc_info->dev) : "<null>");
+ 	return 0;
+ power_up_failed:
+ 	CAM_ERR(CAM_SENSOR, "failed");
++	pr_emerg("vamos-cam-sensor: power_up failed dev=%s index=%d rc=%d ret=%d\n",
++		soc_info->dev ? dev_name(soc_info->dev) : "<null>",
++		index, rc, ret);
+ 	for (index--; index >= 0; index--) {
+ 		CAM_DBG(CAM_SENSOR, "index %d",  index);
+ 		power_setting = &ctrl->power_setting[index];
+ 		CAM_DBG(CAM_SENSOR, "type %d",
+ 			power_setting->seq_type);
++		pr_emerg("vamos-cam-sensor: power_up unwind idx=%d seq=%d seq_val=%u config=%ld\n",
++			index, power_setting->seq_type,
++			power_setting->seq_val, power_setting->config_val);
+ 		switch (power_setting->seq_type) {
+ 		case SENSOR_MCLK:
+ 			for (i = soc_info->num_clk - 1; i >= 0; i--) {
+@@ -2435,11 +2554,15 @@ int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
+ 			ctrl->pinctrl_info.gpio_state_suspend);
+ 		if (ret)
+ 			CAM_ERR(CAM_SENSOR, "cannot set pin to suspend state");
++		pr_emerg("vamos-cam-sensor: power_up unwind pinctrl suspend ret=%d dev=%s\n",
++			ret, soc_info->dev ? dev_name(soc_info->dev) : "<null>");
+ 		devm_pinctrl_put(ctrl->pinctrl_info.pinctrl);
+ 	}
+ 
+ 	ctrl->cam_pinctrl_status = 0;
+ 	cam_sensor_util_request_gpio_table(soc_info, 0);
++	pr_emerg("vamos-cam-sensor: power_up failed exit dev=%s rc=%d\n",
++		soc_info->dev ? dev_name(soc_info->dev) : "<null>", rc);
+ 
+ 	return rc;
+ }
+@@ -2474,6 +2597,9 @@ int cam_sensor_util_power_down(struct cam_sensor_power_ctrl_t *ctrl,
+ 	struct msm_camera_gpio_num_info *gpio_num_info = NULL;
+ 
+ 	CAM_DBG(CAM_SENSOR, "Enter");
++	pr_emerg("vamos-cam-sensor: power_down enter dev=%s index=%d ctrl=%pK soc=%pK\n",
++		(soc_info && soc_info->dev) ? dev_name(soc_info->dev) : "<null>",
++		soc_info ? soc_info->index : -1, ctrl, soc_info);
+ 	if (!ctrl || !soc_info) {
+ 		CAM_ERR(CAM_SENSOR, "failed ctrl %pK",  ctrl);
+ 		return -EINVAL;
+@@ -2505,14 +2631,23 @@ int cam_sensor_util_power_down(struct cam_sensor_power_ctrl_t *ctrl,
+ 
+ 		ps = NULL;
+ 		CAM_DBG(CAM_SENSOR, "seq_type %d",  pd->seq_type);
++		pr_emerg("vamos-cam-sensor: power_down idx=%d seq=%d seq_val=%u config=%ld delay=%u\n",
++			index, pd->seq_type, pd->seq_val,
++			pd->config_val, pd->delay);
+ 		switch (pd->seq_type) {
+ 		case SENSOR_MCLK:
++			pr_emerg("vamos-cam-sensor: power_down mclk disable begin num_clk=%u\n",
++				soc_info->num_clk);
+ 			for (i = soc_info->num_clk - 1; i >= 0; i--) {
++				pr_emerg("vamos-cam-sensor: power_down clk disable i=%d name=%s\n",
++					i, soc_info->clk_name[i] ?: "<null>");
+ 				cam_soc_util_clk_disable(soc_info->clk[i],
+ 					soc_info->clk_name[i]);
+ 			}
+ 
+ 			ret = cam_config_mclk_reg(ctrl, soc_info, index);
++			pr_emerg("vamos-cam-sensor: power_down mclk reg disable ret=%d\n",
++				ret);
+ 			if (ret < 0) {
+ 				CAM_ERR(CAM_SENSOR,
+ 					"config clk reg failed rc: %d", ret);
+@@ -2531,10 +2666,21 @@ int cam_sensor_util_power_down(struct cam_sensor_power_ctrl_t *ctrl,
+ 			if (!gpio_num_info->valid[pd->seq_type])
+ 				continue;
+ 
++			pr_emerg("vamos-cam-sensor: power_down gpio seq=%d gpio=%u config=%ld before=%d\n",
++				pd->seq_type,
++				gpio_num_info->gpio_num[pd->seq_type],
++				pd->config_val,
++				gpio_get_value_cansleep(
++					gpio_num_info->gpio_num[pd->seq_type]));
+ 			cam_res_mgr_gpio_set_value(
+ 				gpio_num_info->gpio_num
+ 				[pd->seq_type],
+ 				(int) pd->config_val);
++			pr_emerg("vamos-cam-sensor: power_down gpio seq=%d gpio=%u after=%d\n",
++				pd->seq_type,
++				gpio_num_info->gpio_num[pd->seq_type],
++				gpio_get_value_cansleep(
++					gpio_num_info->gpio_num[pd->seq_type]));
+ 
+ 			break;
+ 		case SENSOR_VANA:
+@@ -2555,6 +2701,9 @@ int cam_sensor_util_power_down(struct cam_sensor_power_ctrl_t *ctrl,
+ 				if (pd->seq_val < num_vreg) {
+ 					CAM_DBG(CAM_SENSOR,
+ 						"Disable Regulator");
++					pr_emerg("vamos-cam-sensor: power_down regulator disable begin name=%s seq_val=%u\n",
++						soc_info->rgltr_name[ps->seq_val],
++						ps->seq_val);
+ 					ret =  cam_soc_util_regulator_disable(
+ 					soc_info->rgltr[ps->seq_val],
+ 					soc_info->rgltr_name[ps->seq_val],
+@@ -2575,6 +2724,9 @@ int cam_sensor_util_power_down(struct cam_sensor_power_ctrl_t *ctrl,
+ 							GPIOF_OUT_INIT_LOW);
+ 						continue;
+ 					}
++					pr_emerg("vamos-cam-sensor: power_down regulator disable end name=%s ret=%d\n",
++						soc_info->rgltr_name[ps->seq_val],
++						ret);
+ 					ps->data[0] =
+ 						soc_info->rgltr[ps->seq_val];
+ 				} else {
+@@ -2587,7 +2739,11 @@ int cam_sensor_util_power_down(struct cam_sensor_power_ctrl_t *ctrl,
+ 				CAM_ERR(CAM_SENSOR,
+ 					"error in power up/down seq");
+ 
++			pr_emerg("vamos-cam-sensor: power_down power-domain disable begin dev=%s\n",
++				soc_info->dev ? dev_name(soc_info->dev) : "<null>");
+ 			cam_soc_util_power_domain_disable_default(soc_info);
++			ret = 0;
++			pr_emerg("vamos-cam-sensor: power_down power-domain disable end\n");
+ 
+ 			ret = msm_cam_sensor_handle_reg_gpio(pd->seq_type,
+ 				gpio_num_info, GPIOF_OUT_INIT_LOW);
+@@ -2606,6 +2762,11 @@ int cam_sensor_util_power_down(struct cam_sensor_power_ctrl_t *ctrl,
+ 		else if (pd->delay)
+ 			usleep_range(pd->delay * 1000,
+ 				(pd->delay * 1000) + 1000);
++		if (pd->delay)
++			pr_emerg("vamos-cam-sensor: power_down delay idx=%d delay_ms=%u done\n",
++				index, pd->delay);
++		pr_emerg("vamos-cam-sensor: power_down step done idx=%d seq=%d ret=%d\n",
++			index, pd->seq_type, ret);
+ 	}
+ 
+ 	if (ctrl->cam_pinctrl_status) {
+@@ -2614,6 +2775,8 @@ int cam_sensor_util_power_down(struct cam_sensor_power_ctrl_t *ctrl,
+ 				ctrl->pinctrl_info.gpio_state_suspend);
+ 		if (ret)
+ 			CAM_ERR(CAM_SENSOR, "cannot set pin to suspend state");
++		pr_emerg("vamos-cam-sensor: power_down pinctrl suspend ret=%d dev=%s\n",
++			ret, soc_info->dev ? dev_name(soc_info->dev) : "<null>");
+ 
+ 		devm_pinctrl_put(ctrl->pinctrl_info.pinctrl);
+ 	}
+@@ -2621,5 +2784,7 @@ int cam_sensor_util_power_down(struct cam_sensor_power_ctrl_t *ctrl,
+ 	cam_sensor_util_request_gpio_table(soc_info, 0);
+ 	ctrl->cam_pinctrl_status = 0;
+ 
++	pr_emerg("vamos-cam-sensor: power_down exit dev=%s\n",
++		soc_info->dev ? dev_name(soc_info->dev) : "<null>");
+ 	return 0;
+ }

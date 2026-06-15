@@ -1,0 +1,15 @@
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor/cam_sensor_core.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor/cam_sensor_core.c
+index b9d2c85..98c5ee0 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor/cam_sensor_core.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor/cam_sensor_core.c
+@@ -1524,6 +1524,10 @@ int cam_sensor_power_up(struct cam_sensor_ctrl_t *s_ctrl)
+ 		return rc;
+ 	}
+ 
++	pr_emerg("vamos-cam-sensor: slot %d temporary pre-cci-init powered hold 3000ms begin\n",
++		s_ctrl->soc_info.index);
++	msleep(3000);
++
+ 	pr_emerg("vamos-cam-sensor: slot %d camera_io_init begin master_type=%d cci_master=%d sid=0x%x retries=%u freq=%u\n",
+ 		s_ctrl->soc_info.index,
+ 		s_ctrl->io_master_info.master_type,

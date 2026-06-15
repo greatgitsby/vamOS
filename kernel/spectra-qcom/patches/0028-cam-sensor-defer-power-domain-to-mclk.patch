@@ -1,0 +1,80 @@
+From 901f62cfddf25bd443f0a9fa4b83e7f8c2709e4d Mon Sep 17 00:00:00 2001
+From: Trey <trey@comma.ai>
+Date: Mon, 15 Jun 2026 16:40:00 +0000
+Subject: cam-sensor: defer sensor power-domain enable to MCLK step
+
+Legacy AGNOS models TITAN_TOP_GDSC as the sensor cam_clk supply and enables
+it with the MCLK power step. The mainline camera_kt path needs the DT
+power-domain plumbing, but enabling it during each VIO/VANA/VDIG regulator
+step changes the bring-up ordering before reset/MCLK.
+
+Keep the mainline power-domain attachment, but turn it on with MCLK and turn
+it off after MCLK shutdown so the order is closer to the working legacy
+sequence while preserving the new driver API.
+---
+ .../cam_sensor_utils/cam_sensor_util.c        | 30 +++++++++----------
+ 1 file changed, 15 insertions(+), 15 deletions(-)
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_utils/cam_sensor_util.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_utils/cam_sensor_util.c
+index b5353a334..ba8d88e6 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_utils/cam_sensor_util.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_utils/cam_sensor_util.c
+@@ -2467,5 +2467,15 @@ int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
+ 				goto power_up_failed;
+ 			}
++			pr_emerg("vamos-cam-sensor: power domain enable before-mclk begin dev=%s\n",
++				dev_name(soc_info->dev));
++			rc = cam_soc_util_power_domain_enable_default(soc_info);
++			pr_emerg("vamos-cam-sensor: power domain enable before-mclk end rc=%d\n",
++				rc);
++			if (rc < 0) {
++				CAM_ERR(CAM_SENSOR,
++					"Power domain enable failed with rc = %d", rc);
++				goto power_up_failed;
++			}
+ 			for (j = 0; j < num_vreg; j++) {
+ 				if (!strcmp(soc_info->rgltr_name[j],
+ 					"cam_clk")) {
+@@ -2645,16 +2654,6 @@ int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
+ 					power_setting->seq_val, num_vreg);
+ 			}
+ 
+-			pr_emerg("vamos-cam-sensor: power domain enable begin dev=%s\n",
+-				dev_name(soc_info->dev));
+-			rc = cam_soc_util_power_domain_enable_default(soc_info);
+-			pr_emerg("vamos-cam-sensor: power domain enable end rc=%d\n",
+-				rc);
+-			if (rc < 0) {
+-				CAM_ERR(CAM_SENSOR,
+-					"Power domain enable failed with rc = %d", rc);
+-				goto power_up_failed;
+-			}
+ 			rc = msm_cam_sensor_handle_reg_gpio(
+ 				power_setting->seq_type,
+ 				gpio_num_info, 1);
+@@ -2890,6 +2889,11 @@ int cam_sensor_power_down(struct cam_sensor_power_ctrl_t *ctrl,
+ 				continue;
+ 			}
++			pr_emerg("vamos-cam-sensor: power_down power-domain disable after-mclk begin dev=%s\n",
++				soc_info->dev ? dev_name(soc_info->dev) : "<null>");
++			cam_soc_util_power_domain_disable_default(soc_info);
++			ret = 0;
++			pr_emerg("vamos-cam-sensor: power_down power-domain disable after-mclk end\n");
+ 			break;
+ 		case SENSOR_RESET:
+ 		case SENSOR_STANDBY:
+ 		case SENSOR_CUSTOM_GPIO1:
+@@ -2974,10 +2978,5 @@ int cam_sensor_power_down(struct cam_sensor_power_ctrl_t *ctrl,
+ 				CAM_ERR(CAM_SENSOR,
+ 					"error in power up/down seq");
+ 
+-			pr_emerg("vamos-cam-sensor: power_down power-domain disable begin dev=%s\n",
+-				soc_info->dev ? dev_name(soc_info->dev) : "<null>");
+-			cam_soc_util_power_domain_disable_default(soc_info);
+-			ret = 0;
+-			pr_emerg("vamos-cam-sensor: power_down power-domain disable end\n");
+ 
+ 			ret = msm_cam_sensor_handle_reg_gpio(pd->seq_type,
+ 				gpio_num_info, GPIOF_OUT_INIT_LOW);
+-- 
+2.43.0

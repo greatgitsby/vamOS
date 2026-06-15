@@ -1,0 +1,114 @@
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_core.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_core.c
+index dcd831863..b8e8a9d2f 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_core.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_core.c
+@@ -4,12 +4,87 @@
+  * Copyright (c) 2023-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+  */
+ 
++#include <linux/delay.h>
++#include <linux/io.h>
+ #include <linux/module.h>
+ #include "cam_cci_core.h"
+ #include "cam_cci_dev.h"
+ #include "cam_req_mgr_workq.h"
+ #include "cam_common_util.h"
+ 
++#define CAM_CCI_SDM845_TLMM_PHYS 0x03400000
++#define CAM_CCI_SDM845_TLMM_EAST 0x00100000
++#define CAM_CCI_SDM845_TLMM_NORTH 0x00500000
++#define CAM_CCI_SDM845_TLMM_SOUTH 0x00900000
++#define CAM_CCI_SDM845_TLMM_REG_SIZE 0x1000
++#define CAM_CCI_SDM845_TLMM_MAP_SIZE 0xc00000
++
++static int cam_cci_sdm845_tlmm_region(unsigned int local_gpio)
++{
++	switch (local_gpio) {
++	case 7:
++	case 31 ... 34:
++	case 49 ... 68:
++	case 79 ... 84:
++	case 97 ... 121:
++	case 127 ... 149:
++		return CAM_CCI_SDM845_TLMM_NORTH;
++	case 0 ... 3:
++	case 8 ... 11:
++	case 27 ... 30:
++	case 39:
++	case 41 ... 48:
++	case 69 ... 78:
++	case 85 ... 88:
++	case 122 ... 126:
++		return CAM_CCI_SDM845_TLMM_EAST;
++	default:
++		return CAM_CCI_SDM845_TLMM_SOUTH;
++	}
++}
++
++static void cam_cci_dump_sdm845_tlmm_one(void __iomem *tlmm,
++	const char *tag, enum cci_i2c_master_t master, unsigned int local_gpio)
++{
++	u32 ctl;
++	u32 io;
++	u32 offset;
++
++	offset = cam_cci_sdm845_tlmm_region(local_gpio) +
++		(local_gpio * CAM_CCI_SDM845_TLMM_REG_SIZE);
++	ctl = readl_relaxed(tlmm + offset);
++	io = readl_relaxed(tlmm + offset + 0x4);
++	pr_emerg("vamos-cam-cci: tlmm %s master=%d gpio=%u ctl=0x%x mux=%u pull=%u drv=%u oe=%u io=0x%x in=%u out=%u\n",
++		tag, master, local_gpio, ctl, (ctl >> 2) & 0xf, ctl & 0x3,
++		(ctl >> 6) & 0x7, (ctl >> 9) & 0x1, io, io & 0x1,
++		(io >> 1) & 0x1);
++}
++
++static void cam_cci_dump_sdm845_tlmm_bus(const char *tag,
++	enum cci_i2c_master_t master)
++{
++	void __iomem *tlmm;
++	unsigned int sda_gpio;
++	unsigned int scl_gpio;
++
++	if (master >= MASTER_MAX)
++		return;
++
++	sda_gpio = master == MASTER_1 ? 19 : 17;
++	scl_gpio = master == MASTER_1 ? 20 : 18;
++	tlmm = ioremap(CAM_CCI_SDM845_TLMM_PHYS,
++		CAM_CCI_SDM845_TLMM_MAP_SIZE);
++	if (!tlmm) {
++		pr_emerg("vamos-cam-cci: tlmm %s master=%d ioremap failed\n",
++			tag, master);
++		return;
++	}
++
++	cam_cci_dump_sdm845_tlmm_one(tlmm, tag, master, sda_gpio);
++	cam_cci_dump_sdm845_tlmm_one(tlmm, tag, master, scl_gpio);
++	iounmap(tlmm);
++}
++
+ static int32_t cam_cci_convert_type_to_num_bytes(
+ 	enum camera_sensor_i2c_type type)
+ {
+@@ -1430,7 +1509,13 @@ static int32_t cam_cci_read(struct v4l2_subdev *sd,
+ 			+ master * 0x200 + queue * 0x100);
+ 
+ 	val = 1 << ((master * 2) + queue);
++	cam_cci_dump_sdm845_tlmm_bus("read-before-queue-start", master);
+ 	cam_io_w_mb(val, base + CCI_QUEUE_START_ADDR);
++	cam_cci_dump_sdm845_tlmm_bus("read-after-queue-start-0us", master);
++	udelay(20);
++	cam_cci_dump_sdm845_tlmm_bus("read-after-queue-start-20us", master);
++	udelay(100);
++	cam_cci_dump_sdm845_tlmm_bus("read-after-queue-start-120us", master);
+ 	CAM_DBG(CAM_CCI, "exp_words to be read: %d",
+ 		((read_cfg->num_byte / 4) + 1));
+ 
+@@ -1459,6 +1545,7 @@ static int32_t cam_cci_read(struct v4l2_subdev *sd,
+ 	if (cci_dev->cci_master_info[master].status) {
+ 		pr_emerg("vamos-cam-cci: read status error master=%d status=0x%x slave=0x%x\n",
+ 			master, cci_dev->cci_master_info[master].status, c_ctrl->cci_info->sid << 1);
++		cam_cci_dump_sdm845_tlmm_bus("read-status-error", master);
+ 		cam_cci_dump_registers(cci_dev, master, queue);
+ 		CAM_ERR(CAM_CCI, "ERROR with Slave 0x%x:",
+ 			(c_ctrl->cci_info->sid << 1));

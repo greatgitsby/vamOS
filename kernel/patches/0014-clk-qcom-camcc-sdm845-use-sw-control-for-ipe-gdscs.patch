@@ -1,0 +1,37 @@
+From f053f308d9b7d8c5dbab6604f5e37e88bfde8a44 Mon Sep 17 00:00:00 2001
+From: Trey <trey@comma.ai>
+Date: Sun, 14 Jun 2026 19:56:00 +0000
+Subject: clk: qcom: camcc-sdm845: use software control for IPE GDSCs
+
+The Spectra ICP firmware open path initializes IPE resources even when
+userspace is acquiring the BPS path. Keep IPE0/IPE1 GDSCs under software
+control so the camera device runtime-PM domains can sequence the IPE AHB
+clocks without hitting stuck-off HW_CTRL status.
+---
+ drivers/clk/qcom/camcc-sdm845.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/clk/qcom/camcc-sdm845.c b/drivers/clk/qcom/camcc-sdm845.c
+index b83d2cf14..c5d559447 100644
+--- a/drivers/clk/qcom/camcc-sdm845.c
++++ b/drivers/clk/qcom/camcc-sdm845.c
+@@ -1552,15 +1552,15 @@ static struct gdsc ipe_0_gdsc = {
+ 		.name = "ipe_0_gdsc",
+ 	},
+-	.flags = HW_CTRL | POLL_CFG_GDSCR,
++	.flags = POLL_CFG_GDSCR,
+ 	.pwrsts = PWRSTS_OFF_ON,
+ };
+ 
+ static struct gdsc ipe_1_gdsc = {
+ 	.gdscr = 0x8004,
+ 	.pd = {
+ 		.name = "ipe_1_gdsc",
+ 	},
+-	.flags = HW_CTRL | POLL_CFG_GDSCR,
++	.flags = POLL_CFG_GDSCR,
+ 	.pwrsts = PWRSTS_OFF_ON,
+ };
+ 
+-- 
+2.46.0

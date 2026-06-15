@@ -1,0 +1,28 @@
+From 3e6a5b0ab0d3b2e96068a46ee6dd7f5b4d1d18d7 Mon Sep 17 00:00:00 2001
+From: Trey <trey@comma.ai>
+Date: Sun, 14 Jun 2026 19:48:00 +0000
+Subject: clk: qcom: camcc-sdm845: use software control for BPS GDSC
+
+The Spectra BPS block needs its GDSC enabled before the BPS AHB clock can
+turn on. With HW_CTRL set, runtime enable of the BPS clock can fail with
+cam_cc_bps_ahb_clk stuck off. Use software-controlled GDSC sequencing for
+BPS so the camera device can attach the BPS power domain and enable it
+through runtime PM.
+---
+ drivers/clk/qcom/camcc-sdm845.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/clk/qcom/camcc-sdm845.c b/drivers/clk/qcom/camcc-sdm845.c
+index 2f9e9665d..b83d2cf14 100644
+--- a/drivers/clk/qcom/camcc-sdm845.c
++++ b/drivers/clk/qcom/camcc-sdm845.c
+@@ -1542,6 +1542,6 @@ static struct gdsc bps_gdsc = {
+ 		.name = "bps_gdsc",
+ 	},
+-	.flags = HW_CTRL | POLL_CFG_GDSCR,
++	.flags = POLL_CFG_GDSCR,
+ 	.pwrsts = PWRSTS_OFF_ON,
+ };
+ 
+-- 
+2.46.0

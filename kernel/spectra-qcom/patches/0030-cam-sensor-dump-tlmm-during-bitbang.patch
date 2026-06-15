@@ -1,0 +1,104 @@
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor/cam_sensor_core.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor/cam_sensor_core.c
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor/cam_sensor_core.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor/cam_sensor_core.c
+@@ -18,6 +18,82 @@
+ 
+ 
+ #define VAMOS_CAM_I2C_DELAY_US 5
++#define VAMOS_CAM_SDM845_TLMM_PHYS 0x03400000
++#define VAMOS_CAM_SDM845_TLMM_EAST 0x00100000
++#define VAMOS_CAM_SDM845_TLMM_NORTH 0x00500000
++#define VAMOS_CAM_SDM845_TLMM_SOUTH 0x00900000
++#define VAMOS_CAM_SDM845_TLMM_REG_SIZE 0x1000
++#define VAMOS_CAM_SDM845_TLMM_MAP_SIZE 0xc00000
++#define VAMOS_CAM_SDM845_TLMM_GLOBAL_BASE 552
++
++static int vamos_cam_sdm845_tlmm_region(unsigned int local_gpio)
++{
++	if (local_gpio > 150)
++		return -EINVAL;
++
++	switch (local_gpio) {
++	case 7:
++	case 31 ... 34:
++	case 49 ... 68:
++	case 79 ... 84:
++	case 97 ... 121:
++	case 127 ... 149:
++		return VAMOS_CAM_SDM845_TLMM_NORTH;
++	case 0 ... 3:
++	case 8 ... 11:
++	case 27 ... 30:
++	case 39:
++	case 41 ... 48:
++	case 69 ... 78:
++	case 85 ... 88:
++	case 122 ... 126:
++		return VAMOS_CAM_SDM845_TLMM_EAST;
++	default:
++		return VAMOS_CAM_SDM845_TLMM_SOUTH;
++	}
++}
++
++static void vamos_cam_bitbang_dump_tlmm(const char *tag, unsigned int gpio)
++{
++	void __iomem *tlmm;
++	int local_gpio;
++	int region;
++	u32 offset;
++	u32 ctl;
++	u32 io;
++
++	if (gpio < VAMOS_CAM_SDM845_TLMM_GLOBAL_BASE)
++		return;
++
++	local_gpio = gpio - VAMOS_CAM_SDM845_TLMM_GLOBAL_BASE;
++	region = vamos_cam_sdm845_tlmm_region(local_gpio);
++	if (region < 0) {
++		pr_emerg("vamos-cam-bitbang: tlmm %s gpio=%u local=%d region invalid\n",
++			tag, gpio, local_gpio);
++		return;
++	}
++
++	tlmm = ioremap(VAMOS_CAM_SDM845_TLMM_PHYS,
++		VAMOS_CAM_SDM845_TLMM_MAP_SIZE);
++	if (!tlmm) {
++		pr_emerg("vamos-cam-bitbang: tlmm %s gpio=%u local=%d ioremap failed\n",
++			tag, gpio, local_gpio);
++		return;
++	}
++
++	offset = region + (local_gpio * VAMOS_CAM_SDM845_TLMM_REG_SIZE);
++	ctl = readl_relaxed(tlmm + offset);
++	io = readl_relaxed(tlmm + offset + 0x4);
++	pr_emerg("vamos-cam-bitbang: tlmm %s gpio=%u local=%d ctl=0x%x mux=%u pull=%u drv=%u oe=%u io=0x%x in=%u out=%u\n",
++		tag, gpio, local_gpio, ctl,
++		(ctl >> 2) & 0xf,
++		ctl & 0x3,
++		(ctl >> 6) & 0x7,
++		(ctl >> 9) & 0x1,
++		io, io & 0x1, (io >> 1) & 0x1);
++
++	iounmap(tlmm);
++}
+ 
+ #define VAMOS_CAM_SDM845_CAMCC_PHYS 0x0ad00000
+ #define VAMOS_CAM_SDM845_CAMCC_MAP_SIZE 0x10000
+@@ -247,6 +323,8 @@ static int vamos_cam_sensor_bitbang_chipid(struct cam_sensor_ctrl_t *s_ctrl)
+ 	pr_emerg("vamos-cam-bitbang: slot %d begin master=%d sid7=0x%x reg=0x%x sda=%d scl=%d before sda=%d scl=%d\n",
+ 		s_ctrl->soc_info.index, s_ctrl->cci_i2c_master, sid7,
+ 		reg_addr, sda_gpio, scl_gpio, sda_before, scl_before);
++	vamos_cam_bitbang_dump_tlmm("before-request-sda", sda_gpio);
++	vamos_cam_bitbang_dump_tlmm("before-request-scl", scl_gpio);
+ 
+ 	rc = gpio_request(sda_gpio, "vamos_cam_diag_sda");
+ 	if (rc) {
+@@ -268,6 +346,8 @@ static int vamos_cam_sensor_bitbang_chipid(struct cam_sensor_ctrl_t *s_ctrl)
+ 	vamos_cam_i2c_release(scl_gpio);
+ 	sda_after_req = vamos_cam_i2c_sample(sda_gpio);
+ 	scl_after_req = vamos_cam_i2c_sample(scl_gpio);
++	vamos_cam_bitbang_dump_tlmm("after-request-sda", sda_gpio);
++	vamos_cam_bitbang_dump_tlmm("after-request-scl", scl_gpio);
+ 
+ 	{
+ 		int scan_master;

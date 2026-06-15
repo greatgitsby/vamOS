@@ -8,7 +8,7 @@ from clean branches named `spectra-uapi-migration-plan` in both repos.
 
 ## 0a. Progress Log (read this first)
 
-Last updated: 2026-06-14.
+Last updated: 2026-06-15.
 
 ### openpilot — done and pushed
 
@@ -307,6 +307,19 @@ Parallel from day one:
 - The `6e7e83f` checkpoint boots and probes IPE0/IPE1, then CPAS rejects IPE0
   registration because `client-names` lacked `ipe0`/`ipe1`. The next staged DT
   adds only those CPAS client names; the legacy AGNOS list uses the same names.
+- Current mainline debug checkpoint boots on mici as
+  `6.18.0-vamos-9985ba6 #191`. The camera power wiring has been aligned and
+  validated against the legacy kernel for the three openpilot sensors: VANA
+  (BOB/gpio8), rear DVDD (`camera_rear_ldo`/PM8998 gpio12), VIO (`lvs1`),
+  reset GPIOs, MCLK0/1/2, CCI0/1 pinctrl, and slot 2's legacy gpio28 pinctrl
+  are all active in the powered probe window. MCLK pad sampling shows 24 MHz
+  toggling for all three slots.
+- `system/camerad/spectra_camera_test --sensor os04c10 --probe-only` still
+  reports `0/3 cameras OK`, but the failure is now sharply scoped: tight TLMM
+  sampling immediately after `CCI_QUEUE_START` shows SDA/SCL transitions on CCI
+  master 0 and master 1, followed by a real address NACK. The remaining blocker
+  is no longer basic DTS power/pinctrl plumbing; compare recent-driver CCI queue
+  programming and master setup against the known-good legacy 4.9 driver next.
 
 ## 2. Lane P0 - Source Submodule And Audit
 
@@ -666,6 +679,12 @@ dtc -I dtb -O dts \
 timeout 30s /home/trey/.agents/skills/mici/scripts/mdma.py profile-boot
 git status --short
 ```
+
+Status: in progress through sensor probe. Kernel #191 builds, flashes, boots,
+and reaches powered OS04C10 chip-ID reads for wide/road/driver. Power and pinctrl
+are validated 1:1 against the legacy kernel for the active openpilot sensors, but
+all three probes still address-NACK after CCI pad activity is observed. See
+`docs/cameras/validation/2026-06-14-sensor-nack-rootcause.md`.
 
 Conflict notes: KDTS owns DTS files.
 

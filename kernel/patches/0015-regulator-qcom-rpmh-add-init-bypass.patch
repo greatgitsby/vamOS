@@ -1,0 +1,46 @@
+From 1d1adf3b98d84bf16f739e8cbbafeb019bcd0015 Mon Sep 17 00:00:00 2001
+From: Trey <trey@comma.ai>
+Date: Mon, 15 Jun 2026 12:30:00 +0000
+Subject: regulator: qcom-rpmh: add init bypass hook for BOB bring-up
+
+The downstream SDM845 AGNOS regulator tree initializes pmi8998_bob in
+RPMH_REGULATOR_MODE_PASS and sends that default before camera consumers
+run. Upstream/mainline models BOB pass-through as regulator bypass
+instead of as a DT mode, and a consumer-side bypass vote is insufficient
+on comma four because BOB has many open consumers by the time camera
+sensor power-up runs.
+
+Add a narrow qcom,init-bypass hook so board DTS can request the same
+initial pass-through state for BOB during regulator registration.
+---
+ drivers/regulator/qcom-rpmh-regulator.c | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/drivers/regulator/qcom-rpmh-regulator.c b/drivers/regulator/qcom-rpmh-regulator.c
+index 420023ac4..892363792 100644
+--- a/drivers/regulator/qcom-rpmh-regulator.c
++++ b/drivers/regulator/qcom-rpmh-regulator.c
+@@ -481,6 +481,21 @@ static int rpmh_regulator_init_vreg(struct rpmh_vreg *vreg, struct device *dev,
+ 		return ret;
+ 	}
+ 
++	if (of_property_read_bool(node, "qcom,init-bypass")) {
++		if (!vreg->rdesc.ops->set_bypass) {
++			dev_err(dev, "%pOFn: qcom,init-bypass is only valid for bypass-capable regulators\n",
++				node);
++			return -EINVAL;
++		}
++
++		ret = rpmh_regulator_vrm_set_bypass(rdev, true);
++		if (ret < 0)
++			return dev_err_probe(dev, ret,
++				"%pOFn: failed to initialize bypass mode\n",
++				node);
++		dev_info(dev, "%pOFn initialized in bypass/pass-through mode\n", node);
++	}
++
+ 	dev_dbg(dev, "%pOFn regulator registered for RPMh resource %s @ 0x%05X\n",
+ 		node, rpmh_resource_name, vreg->addr);
+ 
+-- 
+2.46.0

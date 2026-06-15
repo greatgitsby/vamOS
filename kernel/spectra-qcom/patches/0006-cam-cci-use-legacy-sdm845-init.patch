@@ -1,0 +1,172 @@
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_core.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_core.c
+index de0f3d0..2483581 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_core.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_core.c
+@@ -628,6 +628,16 @@ static int32_t cam_cci_set_clk_param(struct cci_device *cci_dev,
+ 	struct cam_hw_soc_info *soc_info =
+ 		&cci_dev->soc_info;
+ 	void __iomem *base = soc_info->reg_map[0].mem_base;
++	uint32_t scl_ctl_addr = (master == MASTER_0) ?
++		CCI_I2C_M0_SCL_CTL_ADDR : CCI_I2C_M1_SCL_CTL_ADDR;
++	uint32_t sda_ctl_0_addr = (master == MASTER_0) ?
++		CCI_I2C_M0_SDA_CTL_0_ADDR : CCI_I2C_M1_SDA_CTL_0_ADDR;
++	uint32_t sda_ctl_1_addr = (master == MASTER_0) ?
++		CCI_I2C_M0_SDA_CTL_1_ADDR : CCI_I2C_M1_SDA_CTL_1_ADDR;
++	uint32_t sda_ctl_2_addr = (master == MASTER_0) ?
++		CCI_I2C_M0_SDA_CTL_2_ADDR : CCI_I2C_M1_SDA_CTL_2_ADDR;
++	uint32_t misc_ctl_addr = (master == MASTER_0) ?
++		CCI_I2C_M0_MISC_CTL_ADDR : CCI_I2C_M1_MISC_CTL_ADDR;
+ 
+ 	if ((i2c_freq_mode >= I2C_MAX_MODES) || (i2c_freq_mode < 0)) {
+ 		CAM_ERR(CAM_CCI, "invalid i2c_freq_mode = %d", i2c_freq_mode);
+@@ -636,8 +646,28 @@ static int32_t cam_cci_set_clk_param(struct cci_device *cci_dev,
+ 
+ 	clk_params = &cci_dev->cci_clk_params[i2c_freq_mode];
+ 
+-	if (cci_dev->i2c_freq_mode[master] == i2c_freq_mode)
++	if (cci_dev->i2c_freq_mode[master] == i2c_freq_mode) {
++		pr_emerg("vamos-cam-cci: clk reuse master=%d freq=%d scl=0x%x sda0=0x%x sda1=0x%x sda2=0x%x misc=0x%x cycles=%u level=%d applied_src=%lu\n",
++			master, i2c_freq_mode,
++			cam_io_r_mb(base + scl_ctl_addr),
++			cam_io_r_mb(base + sda_ctl_0_addr),
++			cam_io_r_mb(base + sda_ctl_1_addr),
++			cam_io_r_mb(base + sda_ctl_2_addr),
++			cam_io_r_mb(base + misc_ctl_addr),
++			cci_dev->cycles_per_us, cci_dev->clk_level_index,
++			soc_info->applied_src_clk_rate);
+ 		return 0;
++	}
++
++	pr_emerg("vamos-cam-cci: clk set master=%d freq=%d src=%u thigh=%u tlow=%u tsu_sto=%u tsu_sta=%u thd_dat=%u thd_sta=%u tbuf=%u stretch=%u trdhld=%u tsp=%u cycles=%u level=%d applied_src=%lu\n",
++		master, i2c_freq_mode, clk_params->cci_clk_src,
++		clk_params->hw_thigh, clk_params->hw_tlow,
++		clk_params->hw_tsu_sto, clk_params->hw_tsu_sta,
++		clk_params->hw_thd_dat, clk_params->hw_thd_sta,
++		clk_params->hw_tbuf, clk_params->hw_scl_stretch_en,
++		clk_params->hw_trdhld, clk_params->hw_tsp,
++		cci_dev->cycles_per_us, cci_dev->clk_level_index,
++		soc_info->applied_src_clk_rate);
+ 	if (master == MASTER_0) {
+ 		cam_io_w_mb(clk_params->hw_thigh << 16 |
+ 			clk_params->hw_tlow,
+@@ -671,6 +701,16 @@ static int32_t cam_cci_set_clk_param(struct cci_device *cci_dev,
+ 	}
+ 	cci_dev->i2c_freq_mode[master] = i2c_freq_mode;
+ 
++	pr_emerg("vamos-cam-cci: clk regs master=%d freq=%d scl=0x%x sda0=0x%x sda1=0x%x sda2=0x%x misc=0x%x cycles=%u level=%d applied_src=%lu\n",
++		master, i2c_freq_mode,
++		cam_io_r_mb(base + scl_ctl_addr),
++		cam_io_r_mb(base + sda_ctl_0_addr),
++		cam_io_r_mb(base + sda_ctl_1_addr),
++		cam_io_r_mb(base + sda_ctl_2_addr),
++		cam_io_r_mb(base + misc_ctl_addr),
++		cci_dev->cycles_per_us, cci_dev->clk_level_index,
++		soc_info->applied_src_clk_rate);
++
+ 	return 0;
+ }
+ 
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_soc.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_soc.c
+index b225181..6d01973 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_soc.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_soc.c
+@@ -18,14 +18,13 @@ static int cam_cci_init_master(struct cci_device *cci_dev,
+ 	soc_info = &cci_dev->soc_info;
+ 	base = soc_info->reg_map[0].mem_base;
+ 
+-	if (cci_dev->hw_version == CCI_VERSION_1_2_9) {
+-		max_queue_0_size = CCI_I2C_QUEUE_0_SIZE_V_1_2;
+-		max_queue_1_size = CCI_I2C_QUEUE_1_SIZE_V_1_2;
+-	} else {
+-		max_queue_0_size = CCI_I2C_QUEUE_0_SIZE;
+-		max_queue_1_size = CCI_I2C_QUEUE_1_SIZE;
+-	}
++	max_queue_0_size = CCI_I2C_QUEUE_0_SIZE;
++	max_queue_1_size = CCI_I2C_QUEUE_1_SIZE;
+ 
++	pr_emerg("vamos-cam-cci: init_master cci=%d master=%d hw=0x%x q0=%u q1=%u ref=%u active=%u\n",
++		cci_dev->soc_info.index, master, cci_dev->hw_version,
++		max_queue_0_size, max_queue_1_size, cci_dev->ref_count,
++		cci_dev->master_active_slave[master]);
+ 	cci_dev->master_active_slave[master]++;
+ 	if (!cci_dev->cci_master_info[master].is_initilized) {
+ 		/* Re-initialize the completion */
+@@ -126,6 +125,10 @@ int cam_cci_init(struct v4l2_subdev *sd,
+ 		return rc;
+ 	}
+ 
++	pr_emerg("vamos-cam-cci: init enter cci=%d master=%d ref=%u num_clk=%u src_idx=%d\n",
++		cci_dev->soc_info.index, master, cci_dev->ref_count,
++		soc_info->num_clk, soc_info->src_clk_idx);
++
+ 	if (cci_dev->ref_count++) {
+ 		rc = cam_cci_init_master(cci_dev, master);
+ 		if (rc) {
+@@ -139,7 +142,7 @@ int cam_cci_init(struct v4l2_subdev *sd,
+ 	}
+ 
+ 	ahb_vote.type = CAM_VOTE_ABSOLUTE;
+-	ahb_vote.vote.level = CAM_LOWSVS_VOTE;
++	ahb_vote.vote.level = CAM_SVS_VOTE;
+ 	axi_vote.num_paths = 1;
+ 	axi_vote.axi_path[0].path_data_type = CAM_AXI_PATH_DATA_ALL;
+ 	axi_vote.axi_path[0].transac_type = CAM_AXI_TRANSACTION_WRITE;
+@@ -148,6 +151,11 @@ int cam_cci_init(struct v4l2_subdev *sd,
+ 	axi_vote.axi_path[0].mnoc_ib_bw = CAM_CPAS_DEFAULT_AXI_BW;
+ 
+ 	rc = cam_cpas_start(cci_dev->cpas_handle, &ahb_vote, &axi_vote);
++	pr_emerg("vamos-cam-cci: cpas start rc=%d ahb=%d camnoc=%llu mnoc_ab=%llu mnoc_ib=%llu\n",
++		rc, ahb_vote.vote.level,
++		(unsigned long long)axi_vote.axi_path[0].camnoc_bw,
++		(unsigned long long)axi_vote.axi_path[0].mnoc_ab_bw,
++		(unsigned long long)axi_vote.axi_path[0].mnoc_ib_bw);
+ 	if (rc) {
+ 		CAM_ERR(CAM_CCI, "CPAS start failed rc= %d", rc);
+ 		return rc;
+@@ -158,6 +166,8 @@ int cam_cci_init(struct v4l2_subdev *sd,
+ 	/* Enable Regulators and IRQ*/
+ 	rc = cam_soc_util_enable_platform_resource(soc_info, true,
+ 		CAM_LOWSVS_VOTE, true);
++	pr_emerg("vamos-cam-cci: enable platform rc=%d vote=%d applied_src=%lu\n",
++		rc, CAM_LOWSVS_VOTE, soc_info->applied_src_clk_rate);
+ 	if (rc < 0) {
+ 		CAM_DBG(CAM_CCI, "request platform resources failed, rc: %d",
+ 			rc);
+@@ -166,6 +176,10 @@ int cam_cci_init(struct v4l2_subdev *sd,
+ 
+ 	cci_dev->hw_version = cam_io_r_mb(base + CCI_HW_VERSION_ADDR);
+ 	CAM_DBG(CAM_CCI, "hw_version = 0x%x", cci_dev->hw_version);
++	pr_emerg("vamos-cam-cci: hw_version=0x%x cycles=%u level=%d src_idx=%d applied_src=%lu\n",
++		cci_dev->hw_version, cci_dev->cycles_per_us,
++		cci_dev->clk_level_index, soc_info->src_clk_idx,
++		soc_info->applied_src_clk_rate);
+ 
+ 	cci_dev->payload_size = MSM_CCI_WRITE_DATA_PAYLOAD_SIZE_11;
+ 	cci_dev->support_seq_write = 1;
+@@ -187,14 +201,20 @@ int cam_cci_init(struct v4l2_subdev *sd,
+ 	cam_io_w_mb(0x1, base + CCI_IRQ_GLOBAL_CLEAR_CMD_ADDR);
+ 
+ 	/* Set RD FIFO threshold for M0 & M1 */
+-	if (cci_dev->hw_version != CCI_VERSION_1_2_9) {
+-		cam_io_w_mb(CCI_I2C_RD_THRESHOLD_VALUE,
+-				base + CCI_I2C_M0_RD_THRESHOLD_ADDR);
+-		cam_io_w_mb(CCI_I2C_RD_THRESHOLD_VALUE,
+-				base + CCI_I2C_M1_RD_THRESHOLD_ADDR);
+-	}
++	cam_io_w_mb(CCI_I2C_RD_THRESHOLD_VALUE,
++			base + CCI_I2C_M0_RD_THRESHOLD_ADDR);
++	cam_io_w_mb(CCI_I2C_RD_THRESHOLD_VALUE,
++			base + CCI_I2C_M1_RD_THRESHOLD_ADDR);
+ 
+ 	cci_dev->cci_state = CCI_STATE_ENABLED;
++	pr_emerg("vamos-cam-cci: init done cci=%d master=%d hw=0x%x q0=%u q1=%u irq_mask0=0x%x irq_mask1=0x%x rdth0=0x%x rdth1=0x%x\n",
++		cci_dev->soc_info.index, master, cci_dev->hw_version,
++		cci_dev->cci_i2c_queue_info[master][QUEUE_0].max_queue_size,
++		cci_dev->cci_i2c_queue_info[master][QUEUE_1].max_queue_size,
++		cam_io_r_mb(base + CCI_IRQ_MASK_0_ADDR),
++		cam_io_r_mb(base + CCI_IRQ_MASK_1_ADDR),
++		cam_io_r_mb(base + CCI_I2C_M0_RD_THRESHOLD_ADDR),
++		cam_io_r_mb(base + CCI_I2C_M1_RD_THRESHOLD_ADDR));
+ 
+ 	return 0;
+ 

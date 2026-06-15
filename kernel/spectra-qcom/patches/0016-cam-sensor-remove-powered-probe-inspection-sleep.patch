@@ -1,0 +1,12 @@
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor/cam_sensor_core.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor/cam_sensor_core.c
+index 2cdd93d..f9cc234 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor/cam_sensor_core.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor/cam_sensor_core.c
+@@ -991,7 +991,6 @@ static int cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl, void *arg)
+ 		}
+ 		pr_emerg("vamos-cam-sensor: slot %d powered probe inspection window begin\n",
+ 			s_ctrl->soc_info.index);
+-		msleep(5000);
+ 		pr_emerg("vamos-cam-sensor: slot %d match_id begin slave=0x%x reg=0x%x expected=0x%x\n",
+ 			s_ctrl->soc_info.index,
+ 			s_ctrl->sensordata->slave_info.sensor_slave_addr,

@@ -1,0 +1,106 @@
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor/cam_sensor_core.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor/cam_sensor_core.c
+index 98c5ee0..a0a1c64 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor/cam_sensor_core.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor/cam_sensor_core.c
+@@ -6,8 +6,9 @@
+ 
+ #include <linux/module.h>
+ #include <linux/gpio.h>
+ #include <cam_sensor_cmn_header.h>
+ #include "cam_sensor_core.h"
++#include "cam_res_mgr_api.h"
+ #include "cam_sensor_util.h"
+ #include "cam_soc_util.h"
+ #include "cam_trace.h"
+@@ -1524,6 +1525,91 @@ int cam_sensor_power_up(struct cam_sensor_ctrl_t *s_ctrl)
+ 		return rc;
+ 	}
+ 
++	{
++		int diag_i;
++		int diag_rc;
++		int diag_found = 0;
++		int reset_gpio = -1;
++		struct cam_sensor_power_setting *diag_power_setting;
++		struct msm_camera_gpio_num_info *gpio_num_info =
++			power_info->gpio_num_info;
++
++		if (gpio_num_info && gpio_num_info->valid[SENSOR_RESET])
++			reset_gpio = gpio_num_info->gpio_num[SENSOR_RESET];
++
++		pr_emerg("vamos-cam-sensor: slot %d temporary dvdd-cycle diagnostic begin reset_gpio=%d power_size=%d num_rgltr=%d\n",
++			s_ctrl->soc_info.index, reset_gpio,
++			power_info->power_setting_size, soc_info->num_rgltr);
++
++		if (reset_gpio >= 0) {
++			diag_rc = cam_res_mgr_gpio_set_value(reset_gpio,
++				GPIOF_OUT_INIT_LOW);
++			pr_emerg("vamos-cam-sensor: slot %d temporary dvdd-cycle reset-low gpio=%d rc=%d\n",
++				s_ctrl->soc_info.index, reset_gpio, diag_rc);
++			msleep(2);
++		}
++
++		for (diag_i = 0; diag_i < power_info->power_setting_size;
++			diag_i++) {
++			diag_power_setting = &power_info->power_setting[diag_i];
++
++			if (diag_power_setting->seq_type != SENSOR_VDIG)
++				continue;
++			if (diag_power_setting->seq_val >= soc_info->num_rgltr) {
++				pr_emerg("vamos-cam-sensor: slot %d temporary dvdd-cycle skip idx=%d seq_val=%u num_rgltr=%d\n",
++					s_ctrl->soc_info.index, diag_i,
++					diag_power_setting->seq_val,
++					soc_info->num_rgltr);
++				continue;
++			}
++			if (!diag_power_setting->data[0]) {
++				pr_emerg("vamos-cam-sensor: slot %d temporary dvdd-cycle skip idx=%d null-regulator name=%s\n",
++					s_ctrl->soc_info.index, diag_i,
++					soc_info->rgltr_name[
++						diag_power_setting->seq_val]);
++				continue;
++			}
++
++			diag_found = 1;
++			diag_rc = cam_soc_util_regulator_disable(
++				diag_power_setting->data[0],
++				soc_info->rgltr_name[diag_power_setting->seq_val],
++				soc_info->rgltr_min_volt[diag_power_setting->seq_val],
++				soc_info->rgltr_max_volt[diag_power_setting->seq_val],
++				soc_info->rgltr_op_mode[diag_power_setting->seq_val],
++				soc_info->rgltr_delay[diag_power_setting->seq_val]);
++			pr_emerg("vamos-cam-sensor: slot %d temporary dvdd-cycle disable idx=%d name=%s rc=%d\n",
++				s_ctrl->soc_info.index, diag_i,
++				soc_info->rgltr_name[diag_power_setting->seq_val],
++				diag_rc);
++			msleep(5);
++			diag_rc = cam_soc_util_regulator_enable(
++				diag_power_setting->data[0],
++				soc_info->rgltr_name[diag_power_setting->seq_val],
++				soc_info->rgltr_min_volt[diag_power_setting->seq_val],
++				soc_info->rgltr_max_volt[diag_power_setting->seq_val],
++				soc_info->rgltr_op_mode[diag_power_setting->seq_val],
++				soc_info->rgltr_delay[diag_power_setting->seq_val]);
++			pr_emerg("vamos-cam-sensor: slot %d temporary dvdd-cycle enable idx=%d name=%s rc=%d\n",
++				s_ctrl->soc_info.index, diag_i,
++				soc_info->rgltr_name[diag_power_setting->seq_val],
++				diag_rc);
++			msleep(2);
++			break;
++		}
++
++		if (reset_gpio >= 0) {
++			diag_rc = cam_res_mgr_gpio_set_value(reset_gpio,
++				GPIOF_OUT_INIT_HIGH);
++			pr_emerg("vamos-cam-sensor: slot %d temporary dvdd-cycle reset-high gpio=%d rc=%d\n",
++				s_ctrl->soc_info.index, reset_gpio, diag_rc);
++			msleep(34);
++		}
++
++		pr_emerg("vamos-cam-sensor: slot %d temporary dvdd-cycle diagnostic end found=%d\n",
++			s_ctrl->soc_info.index, diag_found);
++	}
++
+ 	pr_emerg("vamos-cam-sensor: slot %d temporary pre-cci-init powered hold 3000ms begin\n",
+ 		s_ctrl->soc_info.index);
+ 	msleep(3000);

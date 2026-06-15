@@ -1,0 +1,21 @@
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor/cam_sensor_core.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor/cam_sensor_core.c
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor/cam_sensor_core.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor/cam_sensor_core.c
+@@ -1611,7 +1611,7 @@ int cam_sensor_power_up(struct cam_sensor_ctrl_t *s_ctrl)
+ 		return rc;
+ 	}
+ 
+-	{
++	if (false) {
+ 		int diag_i;
+ 		int diag_rc;
+ 		int diag_found = 0;
+@@ -1697,7 +1697,7 @@ int cam_sensor_power_up(struct cam_sensor_ctrl_t *s_ctrl)
+ 			s_ctrl->soc_info.index, diag_found);
+ 	}
+ 
+-	if (s_ctrl->io_master_info.master_type == CCI_MASTER)
++	if (false && s_ctrl->io_master_info.master_type == CCI_MASTER)
+ 		pr_emerg("vamos-cam-sensor: slot %d temporary pre-cci bitbang rc=%d\n",
+ 			s_ctrl->soc_info.index,
+ 			vamos_cam_sensor_bitbang_chipid(s_ctrl));

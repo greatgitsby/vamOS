@@ -1,0 +1,196 @@
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_utils/cam_sensor_util.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_utils/cam_sensor_util.c
+index 94b59b2ea..99575a1a1 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_utils/cam_sensor_util.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_utils/cam_sensor_util.c
+@@ -5,6 +5,7 @@
+  */
+ 
+ #include <linux/kernel.h>
++#include <linux/io.h>
+ #include <linux/pinctrl/consumer.h>
+ #include <clocksource/arm_arch_timer.h>
+ #include <linux/pm_domain.h>
+@@ -17,6 +18,104 @@
+ #define CAM_SENSOR_PINCTRL_STATE_SLEEP "cam_suspend"
+ #define CAM_SENSOR_PINCTRL_STATE_DEFAULT "cam_default"
+ 
++#define CAM_SENSOR_SDM845_TLMM_PHYS 0x03400000
++#define CAM_SENSOR_SDM845_TLMM_EAST 0x00100000
++#define CAM_SENSOR_SDM845_TLMM_NORTH 0x00500000
++#define CAM_SENSOR_SDM845_TLMM_SOUTH 0x00900000
++#define CAM_SENSOR_SDM845_TLMM_REG_SIZE 0x1000
++#define CAM_SENSOR_SDM845_TLMM_MAP_SIZE 0xc00000
++#define CAM_SENSOR_SDM845_TLMM_GLOBAL_BASE 552
++
++static bool cam_sensor_gpio_label_is_mclk(const cam_gpio *gpio)
++{
++	return gpio && gpio->label &&
++		!strncmp(gpio->label, "CAMIF_MCLK", sizeof("CAMIF_MCLK") - 1);
++}
++
++static int cam_sensor_sdm845_local_gpio(unsigned int gpio)
++{
++	if (gpio >= CAM_SENSOR_SDM845_TLMM_GLOBAL_BASE &&
++		gpio < CAM_SENSOR_SDM845_TLMM_GLOBAL_BASE + 151)
++		return gpio - CAM_SENSOR_SDM845_TLMM_GLOBAL_BASE;
++
++	if (gpio < 151)
++		return gpio;
++
++	return -EINVAL;
++}
++
++static int cam_sensor_sdm845_tlmm_region(unsigned int local_gpio)
++{
++	switch (local_gpio) {
++	case 7:
++	case 31 ... 34:
++	case 49 ... 68:
++	case 79 ... 84:
++	case 97 ... 121:
++	case 127 ... 149:
++		return CAM_SENSOR_SDM845_TLMM_NORTH;
++	case 0 ... 3:
++	case 8 ... 11:
++	case 27 ... 30:
++	case 39:
++	case 41 ... 48:
++	case 69 ... 78:
++	case 85 ... 88:
++	case 122 ... 126:
++		return CAM_SENSOR_SDM845_TLMM_EAST;
++	default:
++		return CAM_SENSOR_SDM845_TLMM_SOUTH;
++	}
++}
++
++static void cam_sensor_dump_sdm845_tlmm_gpio(const char *tag,
++	unsigned int gpio, const char *label)
++{
++	void __iomem *tlmm;
++	u32 ctl;
++	u32 io;
++	u32 offset;
++	int local_gpio;
++
++	local_gpio = cam_sensor_sdm845_local_gpio(gpio);
++	if (local_gpio < 0) {
++		pr_emerg("vamos-cam-sensor: tlmm %s gpio=%u label=%s local_gpio=%d invalid\n",
++			tag, gpio, label ?: "<null>", local_gpio);
++		return;
++	}
++
++	offset = cam_sensor_sdm845_tlmm_region(local_gpio) +
++		(local_gpio * CAM_SENSOR_SDM845_TLMM_REG_SIZE);
++	tlmm = ioremap(CAM_SENSOR_SDM845_TLMM_PHYS,
++		CAM_SENSOR_SDM845_TLMM_MAP_SIZE);
++	if (!tlmm) {
++		pr_emerg("vamos-cam-sensor: tlmm %s gpio=%u local=%d label=%s ioremap failed\n",
++			tag, gpio, local_gpio, label ?: "<null>");
++		return;
++	}
++
++	ctl = readl_relaxed(tlmm + offset);
++	io = readl_relaxed(tlmm + offset + 0x4);
++	pr_emerg("vamos-cam-sensor: tlmm %s gpio=%u local=%d label=%s ctl=0x%x mux=%u pull=%u drv=%u oe=%u io=0x%x in=%u out=%u\n",
++		tag, gpio, local_gpio, label ?: "<null>", ctl,
++		(ctl >> 2) & 0xf, ctl & 0x3, (ctl >> 6) & 0x7,
++		(ctl >> 9) & 0x1, io, io & 0x1, (io >> 1) & 0x1);
++	iounmap(tlmm);
++}
++
++static void cam_sensor_dump_sdm845_tlmm_table(const char *tag,
++	cam_gpio *gpio_tbl, uint8_t size)
++{
++	int i;
++
++	if (!gpio_tbl)
++		return;
++
++	for (i = 0; i < size; i++)
++		cam_sensor_dump_sdm845_tlmm_gpio(tag, gpio_tbl[i].gpio,
++			gpio_tbl[i].label);
++}
++
+ #define VALIDATE_VOLTAGE(min, max, config_val) ((config_val) && \
+ 	(config_val >= min) && (config_val <= max))
+ 
+@@ -1259,6 +1358,15 @@ int cam_sensor_util_request_gpio_table(
+ 
+ 	if (gpio_en) {
+ 		for (i = 0; i < size; i++) {
++			if (cam_sensor_gpio_label_is_mclk(&gpio_tbl[i])) {
++				pr_emerg("vamos-cam-sensor: mclk-gpio-request-through dev=%s i=%d gpio=%u label=%s flags=0x%llx\n",
++					soc_info->dev ? dev_name(soc_info->dev) : "<null>",
++					i, gpio_tbl[i].gpio,
++					gpio_tbl[i].label ?: "<null>",
++					(unsigned long long)gpio_tbl[i].flags);
++				cam_sensor_dump_sdm845_tlmm_gpio("before-mclk-request",
++					gpio_tbl[i].gpio, gpio_tbl[i].label);
++			}
+ 			rc = cam_res_mgr_gpio_request(soc_info->dev,
+ 					gpio_tbl[i].gpio,
+ 					gpio_tbl[i].flags, gpio_tbl[i].label);
+@@ -1280,7 +1388,7 @@ int cam_sensor_util_request_gpio_table(
+ 			}
+ 		}
+ 	} else {
+-		for (i = 0; i < size; i++)
++		for (i = 0; i < size; i++) {
+ 			pr_emerg("vamos-cam-sensor: gpio-table free-pending dev=%s i=%d gpio=%u label=%s level=%d\n",
+ 				soc_info->dev ? dev_name(soc_info->dev) : "<null>",
+ 				i, gpio_tbl[i].gpio,
+@@ -1288,7 +1396,16 @@ int cam_sensor_util_request_gpio_table(
+ 				gpio_is_valid(gpio_tbl[i].gpio) ?
+ 					gpio_get_value_cansleep(gpio_tbl[i].gpio) :
+ 					-999);
+-		cam_res_mgr_gpio_free_arry(soc_info->dev, gpio_tbl, size);
++			if (cam_sensor_gpio_label_is_mclk(&gpio_tbl[i])) {
++				pr_emerg("vamos-cam-sensor: mclk-gpio-free-through dev=%s i=%d gpio=%u label=%s\n",
++					soc_info->dev ? dev_name(soc_info->dev) : "<null>",
++					i, gpio_tbl[i].gpio,
++					gpio_tbl[i].label ?: "<null>");
++				cam_sensor_dump_sdm845_tlmm_gpio("before-mclk-free",
++					gpio_tbl[i].gpio, gpio_tbl[i].label);
++			}
++			cam_res_mgr_gpio_free_arry(soc_info->dev, &gpio_tbl[i], 1);
++		}
+ 	}
+ 
+ 	pr_emerg("vamos-cam-sensor: gpio-table exit dev=%s gpio_en=%d rc=%d\n",
+@@ -2218,6 +2335,11 @@ int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
+ 			CAM_ERR(CAM_SENSOR, "cannot set pin to active state");
+ 		pr_emerg("vamos-cam-sensor: power_up pinctrl active ret=%d dev=%s\n",
+ 			ret, soc_info->dev ? dev_name(soc_info->dev) : "<null>");
++		cam_sensor_dump_sdm845_tlmm_table("after-active-pinctrl",
++			soc_info->gpio_data ?
++				soc_info->gpio_data->cam_gpio_req_tbl : NULL,
++			soc_info->gpio_data ?
++				soc_info->gpio_data->cam_gpio_req_tbl_size : 0);
+ 	}
+ 
+ 	CAM_DBG(CAM_SENSOR, "power setting size: %d", ctrl->power_setting_size);
+@@ -2294,6 +2416,11 @@ int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
+ 			pr_emerg("vamos-cam-sensor: mclk enable clocks count=%u first_rate=%ld\n",
+ 				soc_info->num_clk,
+ 				soc_info->num_clk ? soc_info->clk_rate[0][0] : 0);
++			cam_sensor_dump_sdm845_tlmm_table("before-mclk-enable",
++				soc_info->gpio_data ?
++					soc_info->gpio_data->cam_gpio_req_tbl : NULL,
++				soc_info->gpio_data ?
++					soc_info->gpio_data->cam_gpio_req_tbl_size : 0);
+ 			for (j = 0; j < soc_info->num_clk; j++) {
+ 				rc = cam_soc_util_clk_enable(soc_info->clk[j],
+ 					soc_info->clk_name[j],
+@@ -2304,6 +2431,11 @@ int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
+ 			}
+ 			pr_emerg("vamos-cam-sensor: mclk enable clocks end rc=%d\n",
+ 				rc);
++			cam_sensor_dump_sdm845_tlmm_table("after-mclk-enable",
++				soc_info->gpio_data ?
++					soc_info->gpio_data->cam_gpio_req_tbl : NULL,
++				soc_info->gpio_data ?
++					soc_info->gpio_data->cam_gpio_req_tbl_size : 0);
+ 
+ 			if (rc < 0) {
+ 				CAM_ERR(CAM_SENSOR, "clk enable failed");
