@@ -1,0 +1,69 @@
+From 72aea99f24cd5c1133e5dc499032d2c841598214 Mon Sep 17 00:00:00 2001
+From: Trey <trey@moen.ai>
+Date: Wed, 17 Jun 2026 17:43:38 -0700
+Subject: [PATCH] clk: qcom: camcc-sdm845: enable hardware clock control for
+ MCLK RCGs
+
+The SDM845 camera MCLK root clock generators power up with the
+hardware-clock-control bit (CFG_RCGR BIT(20)) set, so the RCG root
+automatically follows the downstream branch enable. Since commit
+bdc3bbdd40ba ("clk: qcom: Clear hardware clock control bit of RCG"),
+clk_rcg2_configure() clears that bit on every set_rate unless the RCG
+opts in via the rcg->hw_clk_ctrl flag added by commit a0e0ec7424c9
+("clk: qcom: rcg2: Make hw_clk_ctrl toggleable").
+
+cam_cc_mclk0..3_clk_src use plain clk_rcg2_ops, which has no .enable
+callback, so software never asserts CMD_ROOT_EN either. The result is
+that the MCLK RCG root parks OFF (CMD_RCGR ROOT_OFF=1) while the branch
+is "enabled" -- the camera sensor receives no MCLK and NACKs its I2C
+address during chip-id probe.
+
+Set hw_clk_ctrl = true on the four camera MCLK clock sources so BIT(20)
+is re-asserted on set_rate, restoring the hardware feedback that keeps
+the root running while the branch is on. This matches the downstream 4.9
+behaviour, on which the OS04C10 sensors probe 3/3.
+
+Signed-off-by: Trey <trey@moen.ai>
+---
+ drivers/clk/qcom/camcc-sdm845.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/drivers/clk/qcom/camcc-sdm845.c b/drivers/clk/qcom/camcc-sdm845.c
+index cf60e8dd2..6bf80b356 100644
+--- a/drivers/clk/qcom/camcc-sdm845.c
++++ b/drivers/clk/qcom/camcc-sdm845.c
+@@ -587,6 +587,7 @@ static struct clk_rcg2 cam_cc_mclk0_clk_src = {
+ 	.cmd_rcgr = 0x4004,
+ 	.mnd_width = 8,
+ 	.hid_width = 5,
++	.hw_clk_ctrl = true,
+ 	.parent_map = cam_cc_parent_map_0,
+ 	.freq_tbl = ftbl_cam_cc_mclk0_clk_src,
+ 	.clkr.hw.init = &(struct clk_init_data){
+@@ -602,6 +603,7 @@ static struct clk_rcg2 cam_cc_mclk1_clk_src = {
+ 	.cmd_rcgr = 0x4024,
+ 	.mnd_width = 8,
+ 	.hid_width = 5,
++	.hw_clk_ctrl = true,
+ 	.parent_map = cam_cc_parent_map_0,
+ 	.freq_tbl = ftbl_cam_cc_mclk0_clk_src,
+ 	.clkr.hw.init = &(struct clk_init_data){
+@@ -617,6 +619,7 @@ static struct clk_rcg2 cam_cc_mclk2_clk_src = {
+ 	.cmd_rcgr = 0x4044,
+ 	.mnd_width = 8,
+ 	.hid_width = 5,
++	.hw_clk_ctrl = true,
+ 	.parent_map = cam_cc_parent_map_0,
+ 	.freq_tbl = ftbl_cam_cc_mclk0_clk_src,
+ 	.clkr.hw.init = &(struct clk_init_data){
+@@ -632,6 +635,7 @@ static struct clk_rcg2 cam_cc_mclk3_clk_src = {
+ 	.cmd_rcgr = 0x4064,
+ 	.mnd_width = 8,
+ 	.hid_width = 5,
++	.hw_clk_ctrl = true,
+ 	.parent_map = cam_cc_parent_map_0,
+ 	.freq_tbl = ftbl_cam_cc_mclk0_clk_src,
+ 	.clkr.hw.init = &(struct clk_init_data){
+-- 
+2.43.0
+
