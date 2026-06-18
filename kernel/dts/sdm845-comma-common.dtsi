@@ -2,6 +2,7 @@
 
 #include <dt-bindings/pinctrl/qcom,pmic-gpio.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator.h>
+#include <dt-bindings/power/qcom,rpmhpd.h>
 #include "sdm845.dtsi"
 #include "pm8998.dtsi"
 #include "pmi8998.dtsi"
@@ -656,7 +657,19 @@
 			interrupts = <GIC_SPI 460 IRQ_TYPE_EDGE_RISING>;
 			interrupt-names = "cci";
 			cell-index = <0>;
-			power-domains = <&clock_camcc TITAN_TOP_GDSC>;
+			/*
+			 * Vote the CX rail corner alongside the Titan GDSC. The
+			 * downstream camera-kernel maps clock-cntl-level="lowsvs"
+			 * to a CX LOW_SVS vote; mainline's dev_pm_opp_set_rate()
+			 * path drops it (the OPP table carries only opp-hz), so CX
+			 * sits at the MIN_SVS enable_corner floor and the OS04C10
+			 * I2C transaction is marginal -> address NACK. Add CX as a
+			 * second power-domain with a required-opps so genpd raises
+			 * CX to LOW_SVS while the CCI block is powered.
+			 */
+			power-domains = <&clock_camcc TITAN_TOP_GDSC>,
+					<&rpmhpd SDM845_CX>;
+			power-domain-names = "titan", "cx";
 			qcom,skip-probe-power-domain-cycle;
 			clocks = <&clock_camcc CAM_CC_CAMNOC_AXI_CLK>,
 				 <&clock_camcc CAM_CC_SOC_AHB_CLK>,
@@ -696,6 +709,8 @@
 
 				opp-37500000 {
 					opp-hz = /bits/ 64 <37500000>;
+					/* raise CX to LOW_SVS while CCI is active */
+					required-opps = <&rpmhpd_opp_low_svs>;
 				};
 			};
 
