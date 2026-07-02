@@ -130,10 +130,15 @@ removal, `__u64` frame ids). That is the only openpilot delta allowed.
       camera-block register matched. Fix: `regulator-always-on` on
       `vreg_l8a_1p2` in `sdm845-comma-mici.dts` (mici-only, as in legacy).
       This retires the scope/LA plan and all remaining M1 leads.
-- [ ] **M2 — first image (the narrow target):** road cam only
-      (`DISABLE_WIDE_ROAD=1 DISABLE_DRIVER=1`), `snapshot_standalone` writes a
-      real PNG. Exercises sensor→CSIPHY→CSID→IFE→SMMU→req_mgr/sync end-to-end.
-- [ ] **M3 — all three cameras:** add wide (IFE) + driver (BPS via ICP FW).
+- [x] **M2 — first image (DONE 2026-07-02):** road cam
+      `snapshot_standalone` writes a real PNG (1344x760, exit 0) on mainline
+      6.18 — full sensor→CSIPHY→CSID→IFE→SMMU→buf_done→req_mgr/sync path.
+      Delivered to `tmp/frames/snap_road.png` (md5-verified). Dark bench
+      frame (no exposure control yet — M4).
+- [ ] **M3 — all three cameras (PARTIAL 2026-07-02):** road+wide dual-IFE
+      simultaneous capture WORKS (`snap_wide.png` delivered, distinct md5).
+      Driver cam (BPS) blocked: ICP FW "config io mapping" HFI response
+      times out (-110) at BPS acquire — needs its own cycle.
 - [ ] **M4 — camerad daemon:** unmodified-ABI camerad under openpilot, 20 fps
       sustained, exposure control, survives reboot cycles.
 - [ ] **M5 — cleanup:** strip diagnostic patches (driver patches marked
@@ -642,3 +647,63 @@ M1 and the wedge).
 (not pushed). Kernel on device: `6.18.0-vamos-e581431` (has 0043/0044/0045
 + heaps). Instrumentation 0040-0042 is TEMP — strip at M5 along with the
 vamos-bw/vamos-cdm/vamos-cpas prints.
+
+### 2026-07-02 (night) — M2 DONE: first frames on mainline; SOF freeze + buf_done root-caused
+
+**FRAMES.** `snapshot_standalone` exits 0 and writes real PNGs on mainline
+6.18: `snap_road.png` (1344x760, 3,065,378 B) and — in the same night —
+**road+wide simultaneously** (M3 partial; distinct md5s). Both delivered to
+`tmp/frames/` md5-verified against the device. Dark bench scene (no
+exposure control in the snapshot tool — M4). Kernel: `6.18.0-vamos-79a93c9`
+lineage (patches 0043-0049 + dmabuf-heaps config).
+
+**SOF freeze root cause (patch 0047, commit `5954827`).** Methodical walk
+up the pipe with a /dev/mem probe (tools live in /tmp of this session;
+pattern documented below):
+- CSIPHY config packet audit (0046, `0200afb`): CLEAN — v1.0.3 packed
+  struct matches camerad's packing; runtime dump shows
+  `lane_assign=0x3210 lane_cnt=4 3ph=0 settle_cnt=33 drate=48000000`,
+  v1.0 table (hw_ver 0x10), lane_enable 0xd5; CSID1
+  `rx_cfg0=0x132103 phy_sel=1 dt=0x2c vc=0`. The "48000000/6600000000"
+  numbers are openpilot's stock ABI values (kernel divides settle by 2e8).
+- CSID1 RX (devmem, mid-stream): **~30k MIPI packets/s, crc=0** — sensor
+  streams, PHY locks, RX receives.
+- CSID IPP: `pxl_irq_status=0x1ff8` latching — pixel path processes frames
+  (its irqs are intentionally masked; SOF comes from the VFE).
+- VFE1: `status0=0x1f` (SOF|EOF|EPOCH0|EPOCH1|RUP) **latched** but
+  `mask0=0x3fe00` (bus bits only) and /proc/interrupts frozen — the CPU
+  never gets a CAMIF irq. Cause: **`cam_vfe170.h` alone among all VFE
+  variants never defines camif `subscribe_irq_mask0/1`** (vfe175/165/lites
+  all use 0x17), so camif start subscribes an all-zero mask. The vfe170
+  camif was never exercised on this camera_kt branch. Fix mirrors the
+  other variants.
+
+**buf_done root cause (patch 0049, commit `79a93c9`).** With SOF fixed,
+requests applied per-frame but the FULL output never generated buf_done
+(congestion → apply reject → CRM recovery → the runtime FLUSHED wall).
+0048 breadcrumbs (`be247c9`) showed the FULL port on 170 is **2 WMs
+(Y idx3 + UV idx4) with NO composite group**, and
+`cam_vfe_bus_start_wm` **assigns** its done bit into
+`bus_irq_reg_mask[REG1]` instead of OR-ing — the subscribe mask read
+`[0x0 0x10 0x0]`, Y-done filtered out forever. Ports with comp groups
+(all newer targets) never hit this. Fix: `|=`. Frames on the next run.
+
+**M3 state:** road+wide (dual IFE) works. Driver cam (BPS): ICP FW
+accepts BPS create, then `cam_icp_process_stream_settings: FW response
+timed out -110` on "config io mapping" at acquire → `configICP()`
+assert. Next M3 cycle starts there (HFI config-io handling vs CICP.FW
+1.0-00050).
+
+**Operational notes for the resumer:**
+- The device drops off the network (and possibly wedges) ~60-90 s after
+  boot when idle — the old "idle death" confound is still live (gpio/sound
+  masking does not obviously prevent it). Practical loop: `mdma boot`,
+  then do ALL ssh work immediately; large file pulls die mid-scp — use
+  chunked `dd | base64` over fresh connections (~2-3 512K chunks per
+  window) and md5-verify.
+- /dev/mem probes MUST touch only clocked blocks: reading the inactive
+  CSID0/CSID-lite while CSID1 streams wedges the NoC (same signature as
+  the 0043 bug). CONFIG_DEVMEM=y, STRICT_DEVMEM allows MMIO.
+- TEMP patches to strip at M5: 0040-0042, 0046, 0048, plus the update_wm
+  dump inside 0049 (keep its one-line |= fix) and the vamos-phy/csid/bus2
+  prints.
