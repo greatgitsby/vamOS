@@ -896,3 +896,61 @@ Series now 44 spectra patches (0045/0046 appended). Remaining known
 issues list unchanged except: M3 ICP watchdog RESOLVED; add "ICP FW
 power-collapse/resume across idle periods untested with the keep-alive
 design (camerad holds its ICP handle, so not exercised in M4 either)".
+
+### 2026-07-02 — image-quality benchmark vs legacy; driver-cam geometry bug isolated
+
+**Reference capture (legacy 4.9, release-tizi v0.11.0 worktree at
+`/data/openpilot_release`, prebuilt camerad + VIPC python client; device
+NOT moved between captures):** all three cams, AE settled —
+`tmp/frames/ref_legacy_{road,wide,driver}.{nv12,png}` (md5-verified).
+Same buffer geometry as mainline (1344x760, stride 1408, uv_off 1081344).
+
+**Benchmark (on-device numpy: y/u/v means, thirds luma-correlation for
+the 3x-repeat, bottom-band mean):**
+
+| cam | metric | legacy ref | mainline (camerad AE) | verdict |
+|---|---|---|---|---|
+| road | y / u / v | 44.5 / 124.3 / 130.3 | 44.5 / 124.5 / 130.2 | **identical** |
+| wide | y / u / v | 58.9 / 125.9 / 127.8 | 59.3 / 125.9 / 127.6 | **identical** |
+| road | 3x-corr / bottom | 0.07 / 46.8 | 0.07 / 46.8 | identical |
+| wide | 3x-corr / bottom | 0.17 / 107.8 | 0.17 / 108.7 | identical |
+| driver | 3x-corr | -0.42/-0.02 | **0.96/0.98** | **3x repeat** |
+| driver | bottom mean | 42.7 | **16.0** | **dead band** |
+| driver | u / v | 123.8 / 141.3 | 127.6 / 125.5 | chroma wrong (per-copy casts) |
+
+**Conclusions:**
+- **IFE (road/wide): NO color/CFA bug.** Channel means match legacy to
+  0.2 — the "blue/purple tint" was the scene lighting (legacy reference
+  shows the same warm-lamp/purple ambient). Geometry exact. These cams
+  are DONE.
+- **Driver (BPS): geometry corruption confirmed and characterized** —
+  3 side-by-side copies (each 1344/3 wide), content fills ~2/3 height,
+  alternating chroma cast per copy (stripe-phase U/V artifacts), bottom
+  band dead. Classic BPS output striping misconfiguration.
+
+**Fix attempt 1 (openpilot `9647eaf4c`, pushed):** restore v0.11.0 mode
+semantics — v0.11.0 runs OS04C10 sensor-BINNED (1344x760) by default and
+applies full-res+out_scale=2 (`ife_downscale_configure`) only for
+ISP_IFE_PROCESSED, so the legacy BPS never downscales; the branch had
+made full-res unconditional. Ported the binned tables + conditional.
+**Necessary (matches the reference pipeline) but NOT sufficient — the
+artifact persists**, so the corruption lives in the UAPI-era
+`config_bps` output io_cfg packing (stride/scanline/plane layout in
+`cam_buf_io_cfg`) vs what the 2018 FW expects. **Next step: byte-diff
+config_bps's output io_cfg + striping-related fields against
+v0.11.0's** (both sources on-device: `/data/openpilot{_release,}`).
+
+**New observation:** 3-cam camerad now dies after ~16 frames with a
+CAMNOC SLAVE_IRQ error ("Possible memory configuration issue, fault at
+SMMU") followed by a config_ife failure — first long 3-cam camerad run
+ever attempted; unclear if related to the driver-cam io_cfg issue (BPS
+writing out of bounds would raise exactly this). Likely same root cause.
+
+**Ops note:** the wifi drop-offs got worse this session (drops ~60-90 s
+after boot, sometimes not returning) — serial (`mdma bash`) needs sudo
+via `sudo bash -c` and worked poorly for long pipelines; the reliable
+pattern remains: boot → single tight ssh session <90 s → results into
+/data + `sync` → read after a later boot. `mdma boot` POWER-CYCLES (do
+not use it as "network recovery" while an on-device test is running).
+Tools checked in: `tools/camera/frame_bench.py` (nv12 stats),
+`tools/camera/vipc_grab.py` (VIPC frame capture).
