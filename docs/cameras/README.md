@@ -17,8 +17,11 @@ ICP firmware downloads. **Blocked** on the OS04C10 sensor NACKing its I2C
 address at the chip-id probe (0/3 cameras; same board reads 3/3 on legacy 4.9).
 Software is exhausted: a userspace `/dev/mem` replay of the identical CCI
 transaction ACKs on legacy and NACKs on mainline, so the cause is below the
-register interface. See "The blocker" below for surviving leads. The device is
-currently flashed with legacy 4.9.103 (the known-good A/B reference).
+register interface. See "The blocker" below for surviving leads. As of
+2026-07-01 the branch is rebased onto master, the repro is confirmed
+byte-identical on the rebased tree (`6.18.0-vamos-44d1fee`, currently flashed),
+and `tools/camera/sensor_probe.py` is the standing probe tool. Flash back to
+the legacy A/B reference with `./vamos flash kernel --legacy`.
 
 ---
 
@@ -82,10 +85,15 @@ removal, `__u64` frame ids). That is the only openpilot delta allowed.
   `camera-bringup-debug-logs` carries `vamos-dbg` tracing and the
   `snapshot_standalone` tool. Unexplored related branches on origin:
   `spectra-isp`, `cameras-spectra-mainline-andi`, `liberation-day-camerad`.
-- **Test tools (in this repo):** `tools/cci_replay.py` (userspace devmem CCI
-  transaction replay — driver-free trigger), `tools/island_dump.py`,
-  `tools/camera/snapshot_standalone.cc` (self-contained camerad replacement:
-  bring-up → N frames → PNG → exit; verified 3/3 on legacy).
+- **Test tools:** `tools/camera/sensor_probe.py` (in this branch) — pure-python
+  chip-id prober speaking the camera_kt v1.0.3 UAPI, byte-for-byte replica of
+  camerad's `sensors_init()` probe packet; needs no openpilot build and runs
+  over the MDMA serial link (`cat` it to `/data` and `sudo python3` it). The
+  June devmem bench (`cci_replay.py`, `island_dump.py`, `cci_hold_capture.py`,
+  MCLK/SCL probes) lives on branch
+  `camera-probe-wip-before-master-reset-20260616-204055` (commit `cfff805`) —
+  cherry-pick from there for M1. `snapshot_standalone.cc` lives in the
+  openpilot repo on branch `camera-bringup-debug-logs`.
 
 ## Hard constraints
 
@@ -107,13 +115,13 @@ removal, `__u64` frame ids). That is the only openpilot delta allowed.
 - [x] **P2 — memory + ICP path:** SMMU contexts, dma-buf mem-mgr, ICP FW
       download + power-collapse/teardown all work (multiple crash fixes
       landed; see validation docs).
-- [~] **M0 — refresh & repro:** rebase `spectra-uapi-migration-plan` onto
-      current `master` (pick up i2c/uart work; check whether the UFS hibern8
-      fix from `kernel-ufs-hibern8-fix` is merged — the storm garbles boots),
-      build, flash, re-confirm the NACK repro on today's tree. **Partial
-      (2026-07-01):** rebase + UFS-fix pull-in + build + legacy 3/3 baseline
-      done; **flash/mainline-repro BLOCKED** — the SOC would not enter QDL
-      (Sahara `9008` never enumerated). See Log.
+- [x] **M0 — refresh & repro (DONE 2026-07-01):** rebased onto `master`
+      (no conflicts), UFS hibern8 fix included as patch 0019, kernel built +
+      flashed (`6.18.0-vamos-44d1fee`), legacy baseline 3/3 ACK, and the NACK
+      repro **confirmed byte-identical** on the rebased tree via the new
+      `tools/camera/sensor_probe.py` (0/3, `status0=0x10000000`, `cur=0x2
+      exec=0x5 read_level=0x0`, `slave=0x6c`). The QDL blocker was **bad
+      physical cabling**, not software. See Log.
 - [ ] **M1 — sensor ACKs (THE blocker):** OS04C10 chip-id read returns
       `0x5304`. See next section.
 - [ ] **M2 — first image (the narrow target):** road cam only
@@ -281,3 +289,62 @@ known-good legacy 4.9.103 state (dload cookie disarmed, /data scratch cleaned).
 
 Next: resolve QDL entry (physical check of the aux cable / QDL strap), then
 flash `6508113`'s `boot.img` and run the mainline OS04C10 probe.
+
+### 2026-07-01 — M0 completed: flash unblocked (cabling), boot gaps found, NACK repro confirmed
+
+**QDL root cause was physical.** The SOC never entered QDL because the device
+wasn't hooked up right; after re-seating the cabling, `reboot-qdl` latches
+`3801:9008` within ~1 s. All the software EDL-forcing attempts in the previous
+entry (dload cookie, `reboot edl`, timing sweeps) were chasing a miswired
+cable — don't repeat them. Two related operational facts: (a) a booted SOC
+shows `04d8:1234` (AGNOS gadget) on the 7002 hub — `3801:9008` appears *only*
+in QDL, so its presence IS a QDL signal; on the mainline kernel the aux port
+shows nothing (no gadget configured). (b) The MDMA VIN toggle can wedge
+(power-cycle no-ops, stale Sahara session ⇒ `qdl.js` "Unsupported mode:
+error"); recovery is USBDEVFS_RESET on the `0424:4002/704c/7002` hubs, which
+restores the toggle (fresh device numbers = fixed).
+
+**Boot gaps on the AGNOS userspace (now release-tizi v0.11.0):**
+- `/persist` (squashfs) fails to mount on every mainline boot: AGNOS's
+  immutable fstab passes `discard`, which 6.18's fs_context **rejects**
+  (`squashfs: Unknown parameter 'discard'`); legacy 4.9 silently ignored it.
+  `local-fs.target` then fails and boot drops to the emergency shell. **Action
+  item: tiny kernel patch to accept/ignore `discard` in squashfs.** (Manual
+  workaround: `mount -t squashfs -o ro /dev/sda2 /persist`, then exit the
+  emergency shell / `systemctl default`; boot continues to degraded
+  multi-user.)
+- The **UFS boot storm persists WITH patch 0019**: one boot in ~2 hits UIC
+  `pwr ctrl cmd 0x18` completion timeouts + TSTBUS dumps right around the
+  persist mount (~12 s), sometimes ending in `device doesn't support HS`
+  fallback. 0019 targeted idle hibern8 recalibration; the boot-time storm is a
+  different (or additional) window. Needs its own investigation — it also
+  saturates the serial console and shreds MDMA handshakes mid-storm.
+
+**Contract gaps found (matter for M2/M4):**
+- udev by-path names don't match legacy: the driver-root DT node yields
+  `platform-ac00000.camera-kt:cam-req-mgr-video-index0` /
+  `platform-ac00000.camera-kt:cam-sync-video-index0`, but camerad hardcodes
+  `platform-soc:qcom_cam-req-mgr-video-index0` and
+  `platform-cam_sync-video-index0`. Runtime devtmpfs symlinks work as a
+  stopgap; the real fix is DT/driver naming. **Action item for M4.**
+- The release (legacy-UAPI) camerad on the v1.0.3 kernel gets remarkably far —
+  video0/cam_sync open, ISP+ICP subdevs open, **ICP firmware downloads and
+  boots** (`CICP.FW.1.0-00050`, BPS/IPE reset OK, TITAN_170_V2) — then
+  segfaults in libc before the sensor probe (UAPI struct drift). For M4 the
+  on-device openpilot must be the `spectra-uapi-migration-plan` build; until
+  then `sensor_probe.py` is the probe vehicle.
+
+**Repro (the M0 goal): confirmed 0/3, byte-identical NACK.** New tool
+`tools/camera/sensor_probe.py` (pure python, v1.0.3 UAPI, no openpilot, ships
+over serial) probes all 3 slots: `PROBE FAIL ret=-19 (ENODEV)` each, dmesg
+shows the exact June signature — `irq nack cci=0 master=0 queue=1
+status0=0x10000000 cur=0x2 exec=0x5 read_level=0x0`, `M0_Q1 NACK ERROR`,
+`read status error status=0xffffffea slave=0x6c` — on kernel
+`6.18.0-vamos-44d1fee` with all 34 driver diagnostics (power-setting dump,
+CCI queue words, TLMM pad sampling) firing as in June. The 4.9-vs-6.18
+below-register-interface conclusion stands on the refreshed tree; M1 leads
+unchanged (PMIC SPMI diff first).
+
+Device end state: mainline `6.18.0-vamos-44d1fee` flashed and booted (degraded
+multi-user after manual persist mount this boot; next reboot will drop to
+emergency again until the squashfs patch lands).
