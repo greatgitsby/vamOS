@@ -1,0 +1,59 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Trey <trey@comma.ai>
+Date: Thu, 02 Jul 2026 03:00:00 +0000
+Subject: cam-soc-util: skip OPP when node has no src clock
+
+A DT node's src_clk_idx defaults to -1 and is only set when the node
+carries a "src-clock-name" property matching one of its clocks
+(cam_soc_util_get_dt_clk_info). The CPAS-CDM node (qcom,cam170-cpas-cdm0)
+has only fixed-rate infra clocks (clock-rates = <0 0 0 0 0>) and no
+scalable source clock, so src_clk_idx stays -1. Two paths then index
+clk_name[]/clk_rate[] with -1, an out-of-bounds read that hands a garbage
+pointer to string formatting / OPP, oopsing at boot as soon as the CDM
+node is enabled and cam_bps_probe binds it:
+
+  1. cam_soc_util_configure_opp(): devm_pm_opp_set_clkname(clk_name[-1])
+     -> of_clk_get_hw -> of_parse_clkspec -> __pi_strcmp DABT.
+  2. cam_soc_util_clk_enable_default(): dev_pm_opp_set_rate() with
+     clk_rate[level][-1], then on failure CAM_ERR("... clk_name %s ...",
+     clk_name[-1]) -> vsnprintf/string DABT on the bad %s.
+
+OPP scaling only applies to a node with a scalable source clock. When
+there is none, skip the OPP set-rate (the per-index clk enable loop that
+follows still enables every clock at its own rate) and skip OPP table
+setup. Fixed-rate infra clocks need no operating-point.
+---
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_utils/cam_soc_util.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_utils/cam_soc_util.c
+index 1111111..2222222 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_utils/cam_soc_util.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_utils/cam_soc_util.c
+@@ -709,6 +709,7 @@ int cam_soc_util_clk_enable_default(struct cam_hw_soc_info *soc_info,
+ 	if (soc_info->cam_cx_ipeak_enable)
+ 		cam_cx_ipeak_update_vote_cx_ipeak(soc_info, apply_level);
+
++	if (soc_info->src_clk_idx >= 0) {
+ 	rc = dev_pm_opp_set_rate(soc_info->dev,
+ 			soc_info->clk_rate[apply_level][soc_info->src_clk_idx]);
+ 	if (rc) {
+@@ -718,6 +719,7 @@ int cam_soc_util_clk_enable_default(struct cam_hw_soc_info *soc_info,
+ 			rc);
+ 		return rc;
+ 	}
++	}
+
+
+ 	for (i = 0; i < soc_info->num_clk; i++) {
+@@ -1790,6 +1792,13 @@ int cam_soc_util_configure_opp(struct cam_hw_soc_info *soc_info)
+ {
+ 	int rc = 0;
+
++	if (soc_info->src_clk_idx < 0) {
++		CAM_DBG(CAM_UTIL,
++			"Dev %s has no src clock (src_clk_idx=%d); skipping OPP config",
++			soc_info->dev_name, soc_info->src_clk_idx);
++		return 0;
++	}
++
+ 	rc = devm_pm_opp_set_clkname(soc_info->dev, soc_info->clk_name[soc_info->src_clk_idx]);
+ 	if (rc) {
+ 		CAM_ERR(CAM_UTIL,
