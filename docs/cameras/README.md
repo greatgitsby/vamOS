@@ -821,3 +821,38 @@ create the msgq fork and push, or vendor the visionbuf change.**
 7. tizi (OX03C10) untouched.
 8. Strip candidates on next pass: kernel 0020, spectra 0017-0036
    diagnostics, 0038/0039.
+
+### 2026-07-02 — M3 hunt round 2: QDSS clock theory eliminated; parked with full evidence
+
+**Legacy comparison (flashed 4.9.103, back on mainline after):**
+- Legacy ICP FW never hits the watchdog (zero SYS_ERROR/WD events across
+  FW download + 5 s idle; the boot-time power collapse parks it cleanly
+  and resume works — the release camerad segfault is unrelated UAPI drift).
+- Legacy holds **qdss_qmp_clk enable=8** (the AOSS QMP "qdss" clock);
+  all five camcc ICP branch clocks read 0 outside active windows on both
+  kernels, so the camcc branches are NOT the differentiator.
+- Tested the resulting theory (`5de508b`): enable the mainline
+  `&aoss_qmp` qdss clock alongside the a5 clocks (soc_util enables it at
+  a5 init). **Did NOT fix it** — identical "SFR: ICP SS WD Timeout" ~0.7 s
+  after first boot, surfacing at acquire-time resume. The commit stays as
+  harmless legacy-parity; 2-cam verified unaffected (snapshot exit 0 ×2).
+
+**Accumulated M3 evidence for the next attempt:**
+- WD fires at first-boot +0.7 s in ALL configs: hard-close PC, PC_PREP
+  handshake PC (icp_pc_en), FW left running untouched, and now with the
+  qdss qmp clock on. A running, healthy, SYS_INIT'ed FW does not pet its
+  WD on mainline.
+- camcc icp_apb/atb/cti/ts branches are enable-stuck (-EBUSY, upstream
+  off) on mainline — and legacy ALSO leaves them at 0 when idle, so the
+  FW does not depend on them being SW-enabled.
+- Remaining angles (untried): (a) diff legacy 4.9 cam_icp/a5 driver code
+  for CSR writes at init (a5_qos, timer/wdt CSR bits) — needs the AGNOS
+  kernel source tree (not on this host); (b) the a5 "Sierra" CSR block
+  (0xac10000) register diff legacy-vs-mainline during the FW-alive window
+  via devmem (same method that cracked M1); (c) FW variants on rootfs
+  (only CAMERA_ICP.elf shipped — check /lib/firmware + /vendor for
+  alternates); (d) whether the FW's WD pet depends on receiving periodic
+  HFI traffic (legacy camerad segfaults ~1 s in — did its FW live longer
+  than 0.7 s only because the driver sent PC_PREP within the window?
+  Instrument mainline to send a benign HFI (e.g. PROPERTY query) at
+  +0.5 s and see if the WD deadline extends).
