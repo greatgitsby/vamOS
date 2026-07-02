@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:01 2001
+From: Trey Moen <trey@moen.ai>
+Date: Thu, 2 Jul 2026 16:00:00 -0700
+Subject: clk: qcom: camcc-sdm845: legacy GDSC wait timing for all camera domains
+
+Extend the titan_top wait-timing fix (patch 0021) to bps/ipe/ife GDSCs:
+legacy AGNOS 4.9 runs CLK_DIS_WAIT=0xF, EN_FEW_WAIT=2 on every camera
+GDSC; mainline defaults leave the IFE domains with a shorter power-up
+ramp. First register/DMA accesses to a just-enabled IFE wedge the NoC
+at a timing-dependent point (observed floating between CSID init and
+the CDM config submit on the comma four).
+---
+
+diff --git a/drivers/clk/qcom/camcc-sdm845.c b/drivers/clk/qcom/camcc-sdm845.c
+index 3566301d5..200eed73b 100644
+--- a/drivers/clk/qcom/camcc-sdm845.c
++++ b/drivers/clk/qcom/camcc-sdm845.c
+@@ -1548,6 +1548,8 @@ static struct gdsc bps_gdsc = {
+ 	},
+ 	.flags = POLL_CFG_GDSCR,
+ 	.pwrsts = PWRSTS_OFF_ON,
++	.en_few_wait_val = 0x2,
++	.clk_dis_wait_val = 0xf,
+ };
+ 
+ static struct gdsc ipe_0_gdsc = {
+@@ -1557,6 +1559,8 @@ static struct gdsc ipe_0_gdsc = {
+ 	},
+ 	.flags = POLL_CFG_GDSCR,
+ 	.pwrsts = PWRSTS_OFF_ON,
++	.en_few_wait_val = 0x2,
++	.clk_dis_wait_val = 0xf,
+ };
+ 
+ static struct gdsc ipe_1_gdsc = {
+@@ -1566,6 +1570,8 @@ static struct gdsc ipe_1_gdsc = {
+ 	},
+ 	.flags = POLL_CFG_GDSCR,
+ 	.pwrsts = PWRSTS_OFF_ON,
++	.en_few_wait_val = 0x2,
++	.clk_dis_wait_val = 0xf,
+ };
+ 
+ static struct gdsc ife_0_gdsc = {
+@@ -1576,6 +1582,8 @@ static struct gdsc ife_0_gdsc = {
+ 	.flags = POLL_CFG_GDSCR,
+ 	.parent = &titan_top_gdsc.pd,
+ 	.pwrsts = PWRSTS_OFF_ON,
++	.en_few_wait_val = 0x2,
++	.clk_dis_wait_val = 0xf,
+ };
+ 
+ static struct gdsc ife_1_gdsc = {
+@@ -1586,6 +1594,8 @@ static struct gdsc ife_1_gdsc = {
+ 	.flags = POLL_CFG_GDSCR,
+ 	.parent = &titan_top_gdsc.pd,
+ 	.pwrsts = PWRSTS_OFF_ON,
++	.en_few_wait_val = 0x2,
++	.clk_dis_wait_val = 0xf,
+ };
+ 
+ static struct gdsc titan_top_gdsc = {

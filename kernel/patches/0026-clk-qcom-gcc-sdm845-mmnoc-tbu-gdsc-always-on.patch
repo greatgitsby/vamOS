@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:01 2001
+From: Trey Moen <trey@moen.ai>
+Date: Thu, 2 Jul 2026 16:30:00 -0700
+Subject: clk: qcom: gcc-sdm845: keep mmnoc MMU TBU GDSCs always on
+
+The multimedia-NoC SMMU TBU vote GDSCs have no consumer without
+CONFIG_ARM_SMMU_QCOM_DEBUG's TBU driver, so genpd sweeps the HLOS vote
+off late in boot. Camera DMA masters (CDM fetch, IFE write, ICP HFI)
+translate through these TBUs; with the vote dropped the camera path
+NoC-wedges the SoC at a floating point during IFE bring-up. Legacy
+AGNOS 4.9 votes them via the camera SMMU driver.
+---
+
+diff --git a/drivers/clk/qcom/gcc-sdm845.c b/drivers/clk/qcom/gcc-sdm845.c
+index 6d0f9cede..47232dc17 100644
+--- a/drivers/clk/qcom/gcc-sdm845.c
++++ b/drivers/clk/qcom/gcc-sdm845.c
+@@ -3498,7 +3498,7 @@ static struct gdsc hlos1_vote_mmnoc_mmu_tbu_hf0_gdsc = {
+ 		.name = "hlos1_vote_mmnoc_mmu_tbu_hf0_gdsc",
+ 	},
+ 	.pwrsts = PWRSTS_OFF_ON,
+-	.flags = VOTABLE,
++	.flags = VOTABLE | ALWAYS_ON,
+ };
+ 
+ static struct gdsc hlos1_vote_mmnoc_mmu_tbu_hf1_gdsc = {
+@@ -3507,7 +3507,7 @@ static struct gdsc hlos1_vote_mmnoc_mmu_tbu_hf1_gdsc = {
+ 		.name = "hlos1_vote_mmnoc_mmu_tbu_hf1_gdsc",
+ 	},
+ 	.pwrsts = PWRSTS_OFF_ON,
+-	.flags = VOTABLE,
++	.flags = VOTABLE | ALWAYS_ON,
+ };
+ 
+ static struct gdsc hlos1_vote_mmnoc_mmu_tbu_sf_gdsc = {
+@@ -3516,7 +3516,7 @@ static struct gdsc hlos1_vote_mmnoc_mmu_tbu_sf_gdsc = {
+ 		.name = "hlos1_vote_mmnoc_mmu_tbu_sf_gdsc",
+ 	},
+ 	.pwrsts = PWRSTS_OFF_ON,
+-	.flags = VOTABLE,
++	.flags = VOTABLE | ALWAYS_ON,
+ };
+ 
+ static struct clk_regmap *gcc_sdm670_clocks[] = {
