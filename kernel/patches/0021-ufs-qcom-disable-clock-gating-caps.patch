@@ -1,29 +1,36 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:01 2001
 From: vamos <vamos@comma.ai>
-Date: Wed, 1 Jul 2026 18:00:00 -0700
-Subject: ufs: qcom: disable clock gating capabilities
+Date: Wed, 1 Jul 2026 19:00:00 -0700
+Subject: ufs: qcom: disable low-power capabilities (gating, scaling, power collapse)
 
-Boot-time UIC storm (pwr ctrl/uic cmd completion timeouts, TSTBUS
-dumps, link left degraded) on the comma four roughly every other boot,
-even with phy_calibrate() on resume (patch 0019). Remove the clock
-gating windows entirely for bring-up.
+Boot-time and idle UIC storms (pwr ctrl / uic cmd completion timeouts,
+TSTBUS dumps, degraded link) on the comma four, even with phy_calibrate()
+on resume (patch 0019) and clock gating alone removed (v1 of this patch):
+gear changes from clock scaling still stormed. Remove all the UFS
+low-power windows for bring-up.
 ---
 
 diff --git a/drivers/ufs/host/ufs-qcom.c b/drivers/ufs/host/ufs-qcom.c
-index eba0e6617..48b6a0adf 100644
+index eba0e6617..75aa3aa41 100644
 --- a/drivers/ufs/host/ufs-qcom.c
 +++ b/drivers/ufs/host/ufs-qcom.c
-@@ -1159,7 +1159,12 @@ static void ufs_qcom_set_host_caps(struct ufs_hba *hba)
+@@ -1159,12 +1159,15 @@ static void ufs_qcom_set_host_caps(struct ufs_hba *hba)
  
  static void ufs_qcom_set_caps(struct ufs_hba *hba)
  {
 -	hba->caps |= UFSHCD_CAP_CLK_GATING | UFSHCD_CAP_HIBERN8_WITH_CLK_GATING;
+-	hba->caps |= UFSHCD_CAP_CLK_SCALING | UFSHCD_CAP_WB_WITH_CLK_SCALING;
 +	/*
-+	 * comma four (SDM845): clock gating + hibern8-with-clk-gating cause a
-+	 * boot-time UIC storm (pwr ctrl/uic cmd completion timeouts, link left
-+	 * broken) roughly every other boot, even with the phy_calibrate()
-+	 * recalibration fix. Disable the gating windows entirely for bring-up.
++	 * comma four (SDM845): clock gating, hibern8-with-clk-gating, clock
++	 * scaling (gear-change pwr ctrl), and aggressive power collapse all
++	 * contribute to a boot-time/idle UIC storm (pwr ctrl / uic cmd
++	 * completion timeouts, link left degraded), even with phy_calibrate()
++	 * on resume. Disable the low-power windows entirely for bring-up.
 +	 */
- 	hba->caps |= UFSHCD_CAP_CLK_SCALING | UFSHCD_CAP_WB_WITH_CLK_SCALING;
  	hba->caps |= UFSHCD_CAP_AUTO_BKOPS_SUSPEND;
  	hba->caps |= UFSHCD_CAP_WB_EN;
+-	hba->caps |= UFSHCD_CAP_AGGR_POWER_COLLAPSE;
+-	hba->caps |= UFSHCD_CAP_RPM_AUTOSUSPEND;
+ 
+ 	ufs_qcom_set_host_caps(hba);
+ }
