@@ -21,10 +21,23 @@ understood.
 ---
 
 diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c
-index 8c98e0d..f7fc3cc 100644
+index 8c98e0d..7d865f7 100644
 --- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c
 +++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c
-@@ -3856,8 +3856,7 @@ static int cam_icp_mgr_hw_open(void *hw_mgr_priv, void *download_fw_args)
+@@ -3773,6 +3773,12 @@ static int cam_icp_mgr_icp_resume(struct cam_icp_hw_mgr *hw_mgr)
+ 		return rc;
+ 	}
+ 
++	if (((struct cam_hw_info *)icp_dev_intf->hw_priv)->hw_state ==
++		CAM_HW_STATE_POWER_UP) {
++		pr_err("vamos-icp: resume skipped, ICP already powered (FW alive)\n");
++		return 0;
++	}
++
+ 	rc = icp_dev_intf->hw_ops.init(icp_dev_intf->hw_priv, NULL, 0);
+ 	if (rc)
+ 		return -EINVAL;
+@@ -3856,8 +3862,7 @@ static int cam_icp_mgr_hw_open(void *hw_mgr_priv, void *download_fw_args)
  		return rc;
  
  	rc = cam_ipe_bps_deint(hw_mgr);
