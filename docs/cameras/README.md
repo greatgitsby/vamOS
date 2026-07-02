@@ -135,10 +135,12 @@ removal, `__u64` frame ids). That is the only openpilot delta allowed.
       6.18 — full sensor→CSIPHY→CSID→IFE→SMMU→buf_done→req_mgr/sync path.
       Delivered to `tmp/frames/snap_road.png` (md5-verified). Dark bench
       frame (no exposure control yet — M4).
-- [ ] **M3 — all three cameras (PARTIAL 2026-07-02):** road+wide dual-IFE
-      simultaneous capture WORKS (`snap_wide.png` delivered, distinct md5).
-      Driver cam (BPS) blocked: ICP FW "config io mapping" HFI response
-      times out (-110) at BPS acquire — needs its own cycle.
+- [x] **M3 — all three cameras (DONE 2026-07-02):** "captured 3/3
+      cameras" — road+wide (IFE) and driver (BPS via ICP FW) in one run;
+      `snap_driver.png` delivered alongside road/wide. Fixes: spectra 0045
+      (skip FW MEM_MAP/UNMAP — the 2018 CICP.FW.1.0-00050 rejects opcode
+      0x0e) and 0046 (keep FW alive after boot + defuse its boot watchdog
+      with early pings) plus icp_pc_en in DT.
 - [x] **M4 — camerad daemon (2-cam, DONE 2026-07-02):** real `camerad`
       (DISABLE_DRIVER=1) ran 5+ min continuously on mainline: both IFE
       cameras at ~20 fps (IFE IRQ rates ~72/s and ~62/s steady), frame_id
@@ -856,3 +858,41 @@ create the msgq fork and push, or vendor the visionbuf change.**
   than 0.7 s only because the driver sent PC_PREP within the window?
   Instrument mainline to send a benign HFI (e.g. PROPERTY query) at
   +0.5 s and see if the WD deadline extends).
+
+### 2026-07-02 (final) — M3 SOLVED: all three cameras; two ICP root causes
+
+**"captured 3/3 cameras"** on kernel `ea393bf` — `snap_driver.png` (BPS
+path through the ICP FW) captured alongside road+wide and delivered to
+`tmp/frames/` (md5 `71dd67de...`, verified). The two root causes, found
+with the queued discriminators:
+
+1. **The watchdog is starvation-armed, not clock-fed.** The HFI-traffic
+   test settled it: with messages flowing every 200 ms the FW stayed
+   healthy indefinitely — and the deadline never re-armed after traffic
+   stopped. An untouched running FW, a hard-close PC and a PC_PREP
+   handshake PC all died at the same +0.7 s. So the FW arms a boot
+   watchdog that only host traffic after SYS_INIT defuses; legacy is
+   immune because its camerad flow always talks to the FW immediately.
+   Fix (spectra 0046): skip the boot-time power collapse (WD state
+   survives collapse and kills the resumed instance) and send two benign
+   NULL-user_data pings at +250/+500 ms (ping-ack handler is NULL-safe;
+   integer/garbage user_data crashes it — that cost one debug cycle).
+   The acquire-time resume now no-ops when the a5 is already powered.
+2. **MEM_MAP is a post-2018 opcode.** With a healthy FW, the original
+   -110 became attributable: the FW debug queue logs "IB_DM:
+   Unrecognized opcode 0x0000000e at ipebpsdomain.c:1278" for camera_kt's
+   HFI_IPEBPS_CMD_OPCODE_MEM_MAP. Legacy 4.9 never sends it; io-config
+   goes via the CONFIG_IO async command this FW handles. Fix (spectra
+   0045): cam_icp_process_stream_settings is a no-op.
+
+Also captured for the record: the a5 Sierra/CSR devmem dump in the
+FW-alive window is nearly empty (9 nonzero lines) — the CSR-diff angle
+was superseded by the traffic discriminator before the legacy dump was
+needed. The keepalive property-write variant (SET_PROPERTY DEBUG_CFG
+with no payload) draws a benign SYS_ERROR per message — don't use it;
+pings with NULL user_data are the clean vehicle.
+
+Series now 44 spectra patches (0045/0046 appended). Remaining known
+issues list unchanged except: M3 ICP watchdog RESOLVED; add "ICP FW
+power-collapse/resume across idle periods untested with the keep-alive
+design (camerad holds its ICP handle, so not exercised in M4 either)".
