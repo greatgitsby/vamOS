@@ -26,10 +26,10 @@ cam_hw_cdm_submit_debug_gen_irq, before the BL FIFO write/commit.
 ---
 
 diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cdm/cam_cdm_hw_core.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cdm/cam_cdm_hw_core.c
-index 56318d2..e5f84fb 100644
+index b346b89..b9f2445 100644
 --- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cdm/cam_cdm_hw_core.c
 +++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cdm/cam_cdm_hw_core.c
-@@ -728,6 +728,16 @@ static int cam_hw_cdm_submit_gen_irq(
+@@ -726,6 +726,16 @@ static int cam_hw_cdm_submit_gen_irq(
  		((uint32_t *)core->gen_irq[fifo_idx].kmdvaddr + len),
  		core->bl_fifo[fifo_idx].bl_tag,
  		bit_wr_enable, fifo_idx);
@@ -46,7 +46,7 @@ index 56318d2..e5f84fb 100644
  	rc = cam_hw_cdm_bl_write(cdm_hw,
  		(core->gen_irq[fifo_idx].vaddr + (4*len)),
  		((4 * core->ops->cdm_required_size_genirq()) - 1),
-@@ -780,6 +790,16 @@ static int cam_hw_cdm_submit_debug_gen_irq(
+@@ -778,6 +788,16 @@ static int cam_hw_cdm_submit_debug_gen_irq(
  	core->ops->cdm_write_genirq(
  		((uint32_t *)core->gen_irq[fifo_idx].kmdvaddr + len),
  		CAM_CDM_DBG_GEN_IRQ_USR_DATA, bit_wr_enable, fifo_idx);

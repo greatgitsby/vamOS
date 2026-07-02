@@ -26,10 +26,10 @@ in the monitor dump on these parts.
 ---
 
 diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cpas/cam_cpas_hw.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cpas/cam_cpas_hw.c
-index 08b70d9..ab43e53 100644
+index def970b..c40bb8f 100644
 --- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cpas/cam_cpas_hw.c
 +++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cpas/cam_cpas_hw.c
-@@ -2062,12 +2062,16 @@ static void cam_cpas_update_monitor_array(struct cam_hw_info *cpas_hw,
+@@ -2047,12 +2047,16 @@ static void cam_cpas_update_monitor_array(struct cam_hw_info *cpas_hw,
  		entry->be_mnoc = cam_io_r_mb(rpmh_base + be_mnoc_offset);
  	}
  
