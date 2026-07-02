@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:01 2001
+From: Trey Moen <trey@moen.ai>
+Date: Thu, 2 Jul 2026 14:00:00 -0700
+Subject: cam-ife: TEMP stage breadcrumbs in start_hw for wedge bisection
+
+The SoC bus-wedges (NMI-unresponsive) inside the ISP START_DEV ioctl for
+IFE1 (road cam), after CSIPHY start succeeds. pr_err markers at each
+start_hw stage (init_hw, config_hw/CDM submit, IFE OUT/SRC/BUS-RD/CSID
+starts) to identify the wedging stage on the console. REMOVE when done.
+---
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/cam_ife_hw_mgr.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/cam_ife_hw_mgr.c
+index 11d73ea..66d38f7 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/cam_ife_hw_mgr.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/cam_ife_hw_mgr.c
+@@ -4630,6 +4630,7 @@ static int cam_ife_mgr_restart_hw(void *start_hw_args)
+ 		return -EPERM;
+ 	}
+ 
++	pr_err("vamos-ife: START IFE OUT\n");
+ 	CAM_DBG(CAM_ISP, "START IFE OUT ... in ctx id:%d", ctx->ctx_index);
+ 
+ 	cam_tasklet_start(ctx->common.tasklet_info);
+@@ -4644,6 +4645,7 @@ static int cam_ife_mgr_restart_hw(void *start_hw_args)
+ 		}
+ 	}
+ 
++	pr_err("vamos-ife: START IFE SRC\n");
+ 	CAM_DBG(CAM_ISP, "START IFE SRC ... in ctx id:%d", ctx->ctx_index);
+ 
+ 	/* Start IFE BUS RD device */
+@@ -4666,6 +4668,7 @@ static int cam_ife_mgr_restart_hw(void *start_hw_args)
+ 		}
+ 	}
+ 
++	pr_err("vamos-ife: START CSID HW\n");
+ 	CAM_DBG(CAM_ISP, "START CSID HW ... in ctx id:%d", ctx->ctx_index);
+ 	/* Start the IFE CSID HW devices */
+ 	list_for_each_entry(hw_mgr_res, &ctx->res_list_ife_csid, list) {
+@@ -4771,7 +4774,9 @@ static int cam_ife_mgr_start_hw(void *hw_mgr_priv, void *start_hw_args)
+ 		}
+ 	}
+ 
++	pr_err("vamos-ife: start_hw: init_hw begin ctx=%u\n", ctx->ctx_index);
+ 	rc = cam_ife_hw_mgr_init_hw(ctx);
++	pr_err("vamos-ife: start_hw: init_hw done rc=%d\n", rc);
+ 	if (rc) {
+ 		CAM_ERR(CAM_ISP, "Init failed");
+ 		goto tasklet_stop;
+@@ -4805,7 +4810,9 @@ start_only:
+ 
+ 	/* Apply initial configuration */
+ 	CAM_DBG(CAM_ISP, "Config HW");
++	pr_err("vamos-ife: start_hw: config_hw (CDM submit) begin\n");
+ 	rc = cam_ife_mgr_config_hw(hw_mgr_priv, &start_isp->hw_config);
++	pr_err("vamos-ife: start_hw: config_hw done rc=%d\n", rc);
+ 	if (rc) {
+ 		CAM_ERR(CAM_ISP,
+ 			"Config HW failed, start_only=%d, rc=%d",
+@@ -4862,6 +4869,7 @@ start_only:
+ 		}
+ 	}
+ 
++	pr_err("vamos-ife: START IFE BUS RD\n");
+ 	CAM_DBG(CAM_ISP, "START IFE BUS RD ... in ctx id:%d", ctx->ctx_index);
+ 	/* Start IFE Bus RD devices */
+ 	list_for_each_entry(hw_mgr_res, &ctx->res_list_ife_in_rd, list) {
