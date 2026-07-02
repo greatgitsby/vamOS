@@ -1502,18 +1502,26 @@
 				 <&clock_camcc CAM_CC_SOC_AHB_CLK>,
 				 <&clock_camcc CAM_CC_CPAS_AHB_CLK>,
 				 <&clock_camcc CAM_CC_CAMNOC_AXI_CLK>,
+				 <&clock_camcc CAM_CC_ICP_APB_CLK>,
+				 <&clock_camcc CAM_CC_ICP_ATB_CLK>,
 				 <&clock_camcc CAM_CC_ICP_CLK>,
-				 <&clock_camcc CAM_CC_ICP_CLK_SRC>;
+				 <&clock_camcc CAM_CC_ICP_CLK_SRC>,
+				 <&clock_camcc CAM_CC_ICP_CTI_CLK>,
+				 <&clock_camcc CAM_CC_ICP_TS_CLK>;
 			clock-names = "gcc_cam_ahb_clk",
 				      "gcc_cam_axi_clk",
 				      "soc_fast_ahb",
 				      "soc_ahb_clk",
 				      "cpas_ahb_clk",
 				      "camnoc_axi_clk",
+				      "icp_apb_clk",
+				      "icp_atb_clk",
 				      "icp_clk",
-				      "icp_clk_src";
-			clock-rates = <0 0 200000000 0 0 0 0 400000000>,
-				      <0 0 200000000 0 0 0 0 600000000>;
+				      "icp_clk_src",
+				      "icp_cti_clk",
+				      "icp_ts_clk";
+			clock-rates = <0 0 200000000 0 0 0 0 0 0 400000000 0 0>,
+				      <0 0 200000000 0 0 0 0 0 0 600000000 0 0>;
 			clock-cntl-level = "svs", "turbo";
 			src-clock-name = "icp_clk_src";
 			operating-points-v2 = <&cam_a5_opp_table>;
