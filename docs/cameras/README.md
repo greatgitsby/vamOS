@@ -354,3 +354,42 @@ unchanged (PMIC SPMI diff first).
 Device end state: mainline `6.18.0-vamos-44d1fee` flashed and booted (degraded
 multi-user after manual persist mount this boot; next reboot will drop to
 emergency again until the squashfs patch lands).
+
+### 2026-07-01 — M1 SOLVED: the NACK was PM8998 L8, found by PMIC SPMI diff
+
+**Method (lead #1 from the blocker list):** new tool
+`tools/camera/pmic_scan.py` walks every SPMI peripheral on all four PMIC
+USIDs via regmap debugfs (seek `registers` at `reg*9` bytes) and prints a
+diffable TYPE/SUBTYPE/STATUS/ctl-window table. Captured on mainline during
+the probe's powered hold and on legacy 4.9 during live camerad streaming
+(3/3 baseline re-verified), then diffed on the host. Note: mainline can only
+read ~208 APPS-owned peripherals (ownership enforced by the mainline
+spmi-pmic-arb) vs 1228 on legacy — the intersection sufficed.
+
+**The delta that mattered:** PM8998 **L8** (`0-01@0x4700`, 1.2 V) — enabled
+with VSET=1.2 V on legacy, never configured on mainline. Legacy
+`comma_mici.dts` carries a bare `&pm8998_l8 { regulator-always-on; };` — a
+mici board power requirement with no DT-visible consumer (it feeds the
+camera sensor power chain), which the mainline DTS port silently dropped.
+One line in `sdm845-comma-mici.dts` (`&vreg_l8a_1p2 { regulator-always-on; }`)
+→ **3/3 PROBE OK, chip id 0x5304, on mainline**. Every prior June
+conclusion was consistent with this: all camera-block registers really were
+byte-identical; the sensor really was electrically dead — just on a rail
+nobody was watching.
+
+**Still-unexplained deltas parked for later:** PM8998 GPIO9/GPIO11 are
+outputs on legacy, inputs on mainline; GPIO12 (vdig-en) drive-strength
+differs; several LDOs (L20/L23/L25) differ. None blocked the ACK.
+
+**Boot reliability (same day):** patch 0020 (squashfs accepts `discard`) —
+/persist now mounts, no more emergency-shell drops. Patch 0021 v1 (clock
+gating off) didn't stop the UFS storm; v2 also removes clock scaling +
+aggressive power collapse (gear-change `pwr ctrl cmd 0x18` storms) — in
+build, unverified.
+
+**M2 vehicle:** openpilot branch `camera-mainline-m2` (greatgitsby fork,
+`8f2abb08f`): UAPI migration + vamos-dbg tracing + vendored v1.0.3 headers
+(`third_party/qcom_spectra_uapi/`) + `NO_MODELD=1` build guard +
+`snapshot_standalone`. On-device build (needs legacy kernel for network):
+`GIT_LFS_SKIP_SMUDGE=1` fetch/checkout, then
+`NO_MODELD=1 scons -j$(nproc) system/camerad/camerad system/camerad/snapshot_standalone`.
