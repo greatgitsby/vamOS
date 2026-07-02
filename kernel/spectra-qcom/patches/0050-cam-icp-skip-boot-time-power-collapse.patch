@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:01 2001
+From: Trey Moen <trey@moen.ai>
+Date: Fri, 3 Jul 2026 02:00:00 -0700
+Subject: cam: icp: keep FW alive after the boot-time download
+
+The ICP FW dies with SFR "ICP SS WD Timeout" at a constant ~0.775 s
+after its first boot, regardless of whether the boot-time power
+collapse uses the hard-close path or (with icp_pc_en) the proper
+PC_PREP handshake + proc_suspend: on this mainline port the ICP
+watchdog keeps counting through the collapsed state and kills the
+next instance at resume/re-download time (BPS acquire then fails
+MEM_MAP -110 against a dead FW).
+
+Sidestep the WDT-across-PC problem for bring-up: skip the power
+collapse cam_icp_mgr_hw_open performs right after the boot-time
+download, leaving the FW running (it services its own watchdog).
+Acquire then takes the "FW already downloaded" path with a healthy
+instance. IPE/BPS core clocks are still deinited. Proper PC/resume
+can be revisited once the WDT clock/reset wiring across collapse is
+understood.
+---
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c
+index 8c98e0d..ca321ae 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c
+@@ -3856,8 +3856,8 @@ static int cam_icp_mgr_hw_open(void *hw_mgr_priv, void *download_fw_args)
+ 		return rc;
+ 
+ 	rc = cam_ipe_bps_deint(hw_mgr);
+-	rc = cam_icp_mgr_icp_power_collapse(hw_mgr);
+-	CAM_DBG(CAM_ICP, "deinit all clocks at boot up");
++	pr_err("vamos-icp: keeping FW alive after boot download (skip boot-time power collapse)
++");
+ 
+ 	return rc;
+ 
