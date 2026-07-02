@@ -1,0 +1,111 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:01 2001
+From: Trey Moen <trey@moen.ai>
+Date: Thu, 2 Jul 2026 17:30:00 -0700
+Subject: cam: TEMP bw-vote chain breadcrumbs (wedge is inside BW blob V1)
+
+0041 pinned the wedge INSIDE the BW-config-V1 blob update ("bw blob
+update idx=1 ver=1" is the last line; no CDM submit print ever fires).
+The chain is blob -> cam_vfe_top_bw_update -> cam_vfe_top_set_axi_bw_vote
+-> cam_cpas_update_axi_vote -> apply_client_axi_vote -> per-port
+icc_set_bw. icc_set_bw already ran clean many times at cpas_start
+(sensor probe survives), so print every layer with the actual ab/ib
+numbers to catch both the dying call and any bogus vote value
+(tree_node_valid=false clients from hw_update_axi_vote can drive
+additional_bw negative on a zero-ab vote). REMOVE when root-caused.
+---
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cpas/cam_cpas_hw.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cpas/cam_cpas_hw.c
+index def970b..08b70d9 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cpas/cam_cpas_hw.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cpas/cam_cpas_hw.c
+@@ -229,7 +229,11 @@ static int cam_cpas_util_vote_bus_client_bw(
+ 		cam_cpas_process_bw_overrides(bus_client, &ab, &ib,
+ 			&cam_debug->cpas_settings);
+ 
++	pr_err("vamos-bw: icc_set_bw[%s] ab=%llu ib=%llu...\n",
++		bus_client->common_data.name, ab, ib);
+ 	rc = cam_soc_bus_client_update_bw(bus_client->soc_bus_client, ab, ib);
++	pr_err("vamos-bw: icc_set_bw[%s] returned rc=%d\n",
++		bus_client->common_data.name, rc);
+ 	if (rc) {
+ 		CAM_ERR(CAM_CPAS,
+ 			"Update bw failed, ab[%llu] ib[%llu]",
+@@ -832,6 +836,9 @@ static int cam_cpas_util_apply_client_axi_vote(
+ 	uint64_t applied_ab = 0, applied_ib = 0;
+ 
+ 	mutex_lock(&cpas_core->tree_lock);
++	pr_err("vamos-bw: cpas apply_client_axi_vote client=%s tree_valid=%d path0 ab=%llu\n",
++		cpas_client->data.identifier, cpas_client->tree_node_valid,
++		axi_vote->axi_path[0].mnoc_ab_bw);
+ 	if (!cpas_client->tree_node_valid) {
+ 		/*
+ 		 * This is by assuming apply_client_axi_vote is called
+@@ -1003,10 +1010,16 @@ static int cam_cpas_util_apply_client_axi_vote(
+ 		else
+ 			mnoc_ib_bw = 0;
+ 
++		pr_err("vamos-bw: cpas port[%s] icc vote ab=%llu ib=%llu additional=%lld\n",
++			mnoc_axi_port->axi_port_name, mnoc_ab_bw, mnoc_ib_bw,
++			mnoc_axi_port->additional_bw);
+ 		rc = cam_cpas_util_vote_bus_client_bw(
+ 			&mnoc_axi_port->bus_client,
+ 			mnoc_ab_bw, mnoc_ib_bw, false, &applied_ab,
+ 			&applied_ib);
++		pr_err("vamos-bw: cpas port[%s] icc vote done rc=%d applied ab=%llu ib=%llu\n",
++			mnoc_axi_port->axi_port_name, rc, applied_ab,
++			applied_ib);
+ 		if (rc) {
+ 			CAM_ERR(CAM_CPAS,
+ 				"Failed in mnoc vote ab[%llu] ib[%llu] rc=%d",
+@@ -1016,8 +1029,10 @@ static int cam_cpas_util_apply_client_axi_vote(
+ 		mnoc_axi_port->applied_ab_bw = applied_ab;
+ 		mnoc_axi_port->applied_ib_bw = applied_ib;
+ 	}
++	pr_err("vamos-bw: cpas camnoc_set_vote_axi_clk_rate...\n");
+ 	rc = cam_cpas_camnoc_set_vote_axi_clk_rate(
+ 		cpas_hw, camnoc_axi_port_updated);
++	pr_err("vamos-bw: cpas camnoc_set_vote_axi_clk_rate done rc=%d\n", rc);
+ 	if (rc)
+ 		CAM_ERR(CAM_CPAS, "Failed in setting axi clk rate rc=%d", rc);
+ 
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/cam_ife_hw_mgr.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/cam_ife_hw_mgr.c
+index ba993c1..a37a3d9 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/cam_ife_hw_mgr.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/cam_ife_hw_mgr.c
+@@ -4072,11 +4072,16 @@ static int cam_isp_blob_bw_update(
+ 				bw_upd_args.camnoc_bw_bytes = cam_bw_bps;
+ 				bw_upd_args.external_bw_bytes = ext_bw_bps;
+ 
++				pr_err("vamos-bw: blob->vfe BW_UPDATE res=%u cam=%llu ext=%llu\n",
++					hw_mgr_res->res_id, cam_bw_bps,
++					ext_bw_bps);
+ 				rc = hw_intf->hw_ops.process_cmd(
+ 					hw_intf->hw_priv,
+ 					CAM_ISP_HW_CMD_BW_UPDATE,
+ 					&bw_upd_args,
+ 					sizeof(struct cam_vfe_bw_update_args));
++				pr_err("vamos-bw: blob->vfe BW_UPDATE done rc=%d\n",
++					rc);
+ 				if (rc)
+ 					CAM_ERR(CAM_PERF, "BW Update failed");
+ 			} else
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe_top/cam_vfe_top_common.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe_top/cam_vfe_top_common.c
+index 2eae532..85fb1b7 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe_top/cam_vfe_top_common.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe_top/cam_vfe_top_common.c
+@@ -167,8 +167,15 @@ int cam_vfe_top_set_axi_bw_vote(struct cam_vfe_soc_private *soc_private,
+ 		total_bw_new_vote, apply_bw_update, start_stop);
+ 
+ 	if (apply_bw_update) {
++		pr_err("vamos-bw: vfe->cpas update_axi_vote hdl=0x%x paths=%d camnoc=%llu ab=%llu ib=%llu\n",
++			soc_private->cpas_handle,
++			to_be_applied_axi_vote->num_paths,
++			to_be_applied_axi_vote->axi_path[0].camnoc_bw,
++			to_be_applied_axi_vote->axi_path[0].mnoc_ab_bw,
++			to_be_applied_axi_vote->axi_path[0].mnoc_ib_bw);
+ 		rc = cam_cpas_update_axi_vote(soc_private->cpas_handle,
+ 			to_be_applied_axi_vote);
++		pr_err("vamos-bw: vfe->cpas update_axi_vote done rc=%d\n", rc);
+ 		if (!rc) {
+ 			memcpy(&top_common->applied_axi_vote,
+ 				to_be_applied_axi_vote,

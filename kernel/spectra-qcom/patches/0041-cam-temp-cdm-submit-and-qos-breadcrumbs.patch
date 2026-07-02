@@ -1,0 +1,174 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:01 2001
+From: Trey Moen <trey@moen.ai>
+Date: Thu, 2 Jul 2026 16:30:00 -0700
+Subject: cam: TEMP CDM-submit pinpoint + CAMNOC QoS confirmation breadcrumbs
+
+The post-ICC wedge fires between "config_hw begin" and the first
+0040 bl_write print. Three evidence lines in one run:
+1. Stage prints through cam_ife_mgr_config_hw (bw-blob updates run
+   BEFORE the CDM submit and call the cpas icc vote path),
+   cam_cdm_submit_bls, and cam_hw_cdm_submit_bl (entry, pending-BL
+   register read, wait_for_bl_fifo, get_io_buf) to pinpoint the
+   dying access.
+2. The get_io_buf print doubles as the SMMU discriminator: the
+   lookup is against the CDM's own iommu handle, so rc=0 with a
+   valid iova proves the BL buffer is mapped in the CDM's domain.
+3. cam_cpastop_poweron readback of safe_lut/qosgen_mainctl for every
+   enabled CAMNOC port plus the camnoc_info selection print settles
+   whether TITAN_170_V200 QoS actually programs.
+REMOVE when root-caused.
+---
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cdm/cam_cdm_hw_core.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cdm/cam_cdm_hw_core.c
+index 9ab239d..56318d2 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cdm/cam_cdm_hw_core.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cdm/cam_cdm_hw_core.c
+@@ -892,6 +892,9 @@ int cam_hw_cdm_submit_bl(struct cam_hw_info *cdm_hw,
+ 
+ 	fifo_idx = CAM_CDM_GET_BLFIFO_IDX(client->handle);
+ 
++	pr_err("vamos-cdm: submit_bl enter fifo=%u cnt=%u iommu_hdl=%d\n",
++		fifo_idx, req->data->cmd_arrary_count,
++		core->iommu_hdl.non_secure);
+ 	CAM_DBG(CAM_CDM, "Submit bl to %s%u", cdm_hw->soc_info.label_name,
+ 		cdm_hw->soc_info.index);
+ 	if (fifo_idx >= CAM_CDM_BL_FIFO_MAX) {
+@@ -921,8 +924,10 @@ int cam_hw_cdm_submit_bl(struct cam_hw_info *cdm_hw,
+ 		return -EAGAIN;
+ 	}
+ 
++	pr_err("vamos-cdm: reading pending-BL reg...\n");
+ 	rc = cam_hw_cdm_bl_fifo_pending_bl_rb_in_fifo(cdm_hw,
+ 		fifo_idx, &pending_bl);
++	pr_err("vamos-cdm: pending-BL read rc=%d pending=%u\n", rc, pending_bl);
+ 
+ 	if (rc) {
+ 		CAM_ERR(CAM_CDM, "Cannot read the current BL depth");
+@@ -955,8 +960,11 @@ int cam_hw_cdm_submit_bl(struct cam_hw_info *cdm_hw,
+ 			break;
+ 		}
+ 		if (write_count == 0) {
++			pr_err("vamos-cdm: wait_for_bl_fifo (i=%d)...\n", i);
+ 			write_count = cam_hw_cdm_wait_for_bl_fifo(cdm_hw,
+ 				(req->data->cmd_arrary_count - i), fifo_idx);
++			pr_err("vamos-cdm: wait_for_bl_fifo done write_count=%d\n",
++				write_count);
+ 			if (write_count < 0) {
+ 				CAM_ERR(CAM_CDM,
+ 					"wait for bl fifo failed %d:%d",
+@@ -971,6 +979,12 @@ int cam_hw_cdm_submit_bl(struct cam_hw_info *cdm_hw,
+ 				cdm_cmd->cmd_flex[i].bl_addr.mem_handle,
+ 				core->iommu_hdl.non_secure, &hw_vaddr_ptr,
+ 				&len);
++			pr_err("vamos-cdm: get_io_buf i=%d hdl=0x%x cdm_iommu=%d rc=%d iova=0x%llx len=%zu off=%u cmdlen=%u\n",
++				i, cdm_cmd->cmd_flex[i].bl_addr.mem_handle,
++				core->iommu_hdl.non_secure, rc,
++				(unsigned long long)hw_vaddr_ptr, len,
++				cdm_cmd->cmd_flex[i].offset,
++				cdm_cmd->cmd_flex[i].len);
+ 		} else if (req->data->type == CAM_CDM_BL_CMD_TYPE_HW_IOVA) {
+ 			if (!cdm_cmd->cmd_flex[i].bl_addr.hw_iova) {
+ 				CAM_ERR(CAM_CDM,
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cdm/cam_cdm_intf.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cdm/cam_cdm_intf.c
+index 31f7504..c2de757 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cdm/cam_cdm_intf.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cdm/cam_cdm_intf.c
+@@ -273,6 +273,8 @@ int cam_cdm_submit_bls(uint32_t handle, struct cam_cdm_bl_request *data)
+ 	int rc = -EINVAL;
+ 	struct cam_hw_intf *hw;
+ 
++	pr_err("vamos-cdm: submit_bls enter hdl=0x%x cnt=%u\n",
++		handle, data ? data->cmd_arrary_count : 0);
+ 	if (!data)
+ 		return rc;
+ 
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cpas/cpas_top/cam_cpastop_hw.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cpas/cpas_top/cam_cpastop_hw.c
+index 847743c..e1062f4 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cpas/cpas_top/cam_cpastop_hw.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cpas/cpas_top/cam_cpastop_hw.c
+@@ -753,6 +753,8 @@ static int cam_cpastop_poweron(struct cam_hw_info *cpas_hw)
+ 	struct cam_cpas_hw_errata_wa_list *errata_wa_list =
+ 		camnoc_info->errata_wa_list;
+ 
++	pr_err("vamos-cpas: poweron QoS apply, specific_size=%d\n",
++		camnoc_info->specific_size);
+ 	CAM_DBG(CAM_CPAS, "errata_wa_list %pK", errata_wa_list);
+ 	cam_cpastop_reset_irq(cpas_hw);
+ 	for (i = 0; i < camnoc_info->specific_size; i++) {
+@@ -782,6 +784,35 @@ static int cam_cpastop_poweron(struct cam_hw_info *cpas_hw)
+ 		}
+ 	}
+ 
++	{
++		struct cam_cpas *vamos_core =
++			(struct cam_cpas *) cpas_hw->core_info;
++		struct cam_hw_soc_info *vamos_soc = &cpas_hw->soc_info;
++		int vamos_cidx =
++			vamos_core->regbase_index[CAM_CPAS_REG_CAMNOC];
++
++		for (i = 0; i < camnoc_info->specific_size; i++) {
++			if (!camnoc_info->specific[i].enable)
++				continue;
++			pr_err("vamos-cpas: QoS port=%d safe_lut[0x%x]=0x%x (want 0x%x en=%d) qosgen_main[0x%x]=0x%x (want 0x%x en=%d)\n",
++				camnoc_info->specific[i].port_type,
++				camnoc_info->specific[i].safe_lut.offset,
++				(vamos_cidx >= 0) ? cam_io_r_mb(
++					vamos_soc->reg_map[vamos_cidx].mem_base
++					+ camnoc_info->specific[i]
++					.safe_lut.offset) : 0xdead,
++				camnoc_info->specific[i].safe_lut.value,
++				camnoc_info->specific[i].safe_lut.enable,
++				camnoc_info->specific[i].qosgen_mainctl.offset,
++				(vamos_cidx >= 0) ? cam_io_r_mb(
++					vamos_soc->reg_map[vamos_cidx].mem_base
++					+ camnoc_info->specific[i]
++					.qosgen_mainctl.offset) : 0xdead,
++				camnoc_info->specific[i].qosgen_mainctl.value,
++				camnoc_info->specific[i].qosgen_mainctl.enable);
++		}
++	}
++
+ #ifdef CONFIG_SPECTRA_SECURE
+ 	struct cam_cpas_hw_errata_wa *errata_wa;
+ 
+@@ -908,6 +939,8 @@ static int cam_cpastop_init_hw_version(struct cam_hw_info *cpas_hw,
+ 		break;
+ 	case CAM_CPAS_TITAN_170_V200:
+ 		camnoc_info = &cam170_cpas200_camnoc_info;
++		pr_err("vamos-cpas: camnoc_info = cam170_cpas200 (hw_version=0x%x)\n",
++			soc_info->hw_version);
+ 		break;
+ 	case CAM_CPAS_TITAN_175_V100:
+ 		camnoc_info = &cam175_cpas100_camnoc_info;
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/cam_ife_hw_mgr.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/cam_ife_hw_mgr.c
+index cc3f4d6..ba993c1 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/cam_ife_hw_mgr.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/cam_ife_hw_mgr.c
+@@ -4159,9 +4159,13 @@ static int cam_ife_mgr_config_hw(void *hw_mgr_priv,
+ 		ctx->last_cdm_done_req = 0;
+ 	}
+ 
++	pr_err("vamos-ife: config_hw enter req=%llu init=%d entries=%d\n",
++		cfg->request_id, cfg->init_packet, cfg->num_hw_update_entries);
+ 	for (i = 0; i < CAM_IFE_HW_NUM_MAX; i++) {
+ 		if (hw_update_data->bw_config_valid[i] == true) {
+ 
++			pr_err("vamos-ife: bw blob update idx=%d ver=%d\n",
++				i, hw_update_data->bw_config_version);
+ 			CAM_DBG(CAM_PERF, "idx=%d, bw_config_version=%d",
+ 				ctx, ctx->ctx_index, i,
+ 				hw_update_data->bw_config_version);
+@@ -4227,9 +4231,13 @@ static int cam_ife_mgr_config_hw(void *hw_mgr_priv,
+ 		reinit_completion(&ctx->config_done_complete);
+ 		ctx->applied_req_id = cfg->request_id;
+ 
++		pr_err("vamos-ife: submitting %u BLs to CDM hdl=0x%x\n",
++			cdm_cmd->cmd_arrary_count, ctx->cdm_handle);
+ 		CAM_DBG(CAM_ISP, "Submit to CDM");
+ 		atomic_set(&ctx->cdm_done, 0);
+ 		rc = cam_cdm_submit_bls(ctx->cdm_handle, cdm_cmd);
++		pr_err("vamos-ife: cam_cdm_submit_bls returned rc=%d, waiting for CDM irq\n",
++			rc);
+ 		if (rc) {
+ 			CAM_ERR(CAM_ISP,
+ 				"Failed to apply the configs for req %llu, rc %d",
