@@ -139,8 +139,14 @@ removal, `__u64` frame ids). That is the only openpilot delta allowed.
       simultaneous capture WORKS (`snap_wide.png` delivered, distinct md5).
       Driver cam (BPS) blocked: ICP FW "config io mapping" HFI response
       times out (-110) at BPS acquire — needs its own cycle.
-- [ ] **M4 — camerad daemon:** unmodified-ABI camerad under openpilot, 20 fps
-      sustained, exposure control, survives reboot cycles.
+- [x] **M4 — camerad daemon (2-cam, DONE 2026-07-02):** real `camerad`
+      (DISABLE_DRIVER=1) ran 5+ min continuously on mainline: both IFE
+      cameras at ~20 fps (IFE IRQ rates ~72/s and ~62/s steady), frame_id
+      6315 at the 5:16 mark, zero CAM_ERR, no CRM recovery storms, and the
+      AE loop working — mid-run VisionIPC frame (y_mean 41.9, delivered as
+      `tmp/frames/midrun_road.png`) shows a clearly visible scene vs the
+      near-black power-on default. Driver cam still excluded (M3 BPS wall).
+      Reboot-cycle endurance not yet exercised.
 - [ ] **M5 — cleanup:** strip diagnostic patches (driver patches marked
       "temporary"/"breadcrumbs", kernel patch 0016), keep the real fixes
       (genpd on sensors, 0017 GDSC timing, 0018 MCLK hw_clk_ctrl), tizi
@@ -707,3 +713,49 @@ assert. Next M3 cycle starts there (HFI config-io handling vs CICP.FW
 - TEMP patches to strip at M5: 0040-0042, 0046, 0048, plus the update_wm
   dump inside 0049 (keep its one-line |= fix) and the vamos-phy/csid/bus2
   prints.
+
+### 2026-07-02 (later) — M4 done (2-cam camerad); M3 BPS parked on the ICP FW watchdog
+
+**M4 (2-cam): the real `camerad` works on mainline.** After rebuilding
+camerad on-device (with the dma-heap VisionBuf), `DISABLE_DRIVER=1 camerad`
+ran 5+ minutes: both IFEs streaming at ~20 fps (IRQ 497/499 rising ~72/s
+and ~62/s, steady across the whole run), zero CAM_ERR in dmesg, no
+clearAndRequeue/CRM recovery at all in steady state, and auto-exposure
+live — a mid-run frame grabbed via the Python VisionIPC client
+(`frame_id=6315`, y_mean 41.9 vs the near-black defaults) shows a clearly
+recognizable bench scene. Artifacts: `tmp/frames/midrun_road.{nv12,png}`
+(md5-verified pull). Note camerad survives the ~90 s network drop-offs
+(the drop is network-only; the device and camerad keep running — this
+reframes the "idle death": it appears to be **wifi/connectivity loss, not
+a SoC wedge**, at least while camerad is active).
+
+**M3 (driver cam / BPS): parked with a precise wall.** Chain of findings:
+- The MEM_MAP -110 was a symptom: the ICP FW dies with SYS_ERROR
+  SFR "ICP SS WD Timeout" a constant **~0.7 s after its first boot**, in
+  every configuration tried: (a) hard-close boot PC (no handshake),
+  (b) proper PC_PREP + proc_suspend (after adding `icp_pc_en` to the
+  cam-icp DT node — kept, commit `02e4e9f`, it is correct), and
+  (c) FW left running untouched (temporary patch 0050, since dropped) —
+  i.e. the FW does not service its own watchdog on mainline even when
+  healthy and running.
+- The downstream a5 node enables 4 extra clocks we lack
+  (icp_apb/atb/cti/ts). All exist in mainline camcc-sdm845 but ALL fail
+  to enable ("status stuck at off", -EBUSY) — they are QDSS-fed and the
+  QDSS infrastructure (tsgen etc.) is down on mainline. Adding them
+  breaks the ICP subdev open outright; reverted.
+- Working hypothesis for the next cycle: the a5 FW's timekeeping/WD-pet
+  depends on the QDSS timestamp/APB plumbing that AGNOS 4.9 brings up
+  (check qdss tsgen + gcc qdss clocks state under legacy; consider a
+  minimal tsgen enable or coresight etm/stm config on mainline).
+- State restored to stable-for-IFE: 0050 dropped, a5 clock list back to
+  original, `icp_pc_en` kept (FW parks cleanly in PC after boot; with no
+  BPS acquire the WD landmine never triggers — 2-cam operation verified
+  unaffected).
+
+**M5 remains:** strip TEMP patches (0040-0042, 0046, 0048, 0049's dump
+hunk — keep the |= fix), renumber, clean rebuild + verification run
+(probe 3/3, 2-cam snapshot, short camerad run), re-author the two
+device-side openpilot commits host-side and push to the fork
+(`camera-mainline-m2`): local commits openpilot `0ad682eb5` + msgq
+`1c4512a` are saved as patch files in `tmp/openpilot-patches/` (device
+has no push credentials).
