@@ -1,0 +1,65 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:01 2001
+From: Trey Moen <trey@moen.ai>
+Date: Thu, 2 Jul 2026 19:00:00 -0700
+Subject: cam: cdm: clean genirq buffer cache before committing its BL
+
+With the NoC wedge fixed (0043), the OPEN gate reaches CDM execution:
+the three userspace-built config BLs run to completion (BL_DONE, VFE
+registers written via AHB), but the kernel-generated GenIRQ BL raises
+Error IRQ 0x10004 = BL_DONE | ERROR_INV_CMD and the config-done IRQ
+never arrives (rc=-110, START_DEV fails).
+
+The genirq buffer is allocated from the CACHED system dma-heap
+(CAM_MEM_FLAG_CACHE in cam_hw_cdm_alloc_genirq_mem) and the GEN_IRQ
+command is CPU-written through the cached kernel vmap immediately
+before the BL commit. sdm845's camera SMMU is not IO-coherent, so the
+CDM fetches the line from DRAM before writeback and decodes stale
+zeros (cmd 0x0) -> INVALID_CMD. Legacy 4.9 ION gave these internal
+buffers an uncached kernel mapping, which is why this never fired
+there; the newer targets this tree ships on have IO-coherent camera
+SMMU paths.
+
+Clean the buffer with the driver's own cam_mem_mgr_cache_ops
+(CAM_MEM_CLEAN_CACHE -> dma_buf begin/end_cpu_access) after writing
+the command in both cam_hw_cdm_submit_gen_irq and
+cam_hw_cdm_submit_debug_gen_irq, before the BL FIFO write/commit.
+---
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cdm/cam_cdm_hw_core.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cdm/cam_cdm_hw_core.c
+index 56318d2..e5f84fb 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cdm/cam_cdm_hw_core.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cdm/cam_cdm_hw_core.c
+@@ -728,6 +728,16 @@ static int cam_hw_cdm_submit_gen_irq(
+ 		((uint32_t *)core->gen_irq[fifo_idx].kmdvaddr + len),
+ 		core->bl_fifo[fifo_idx].bl_tag,
+ 		bit_wr_enable, fifo_idx);
++	{
++		struct cam_mem_cache_ops_cmd cache_cmd;
++
++		cache_cmd.buf_handle = core->gen_irq[fifo_idx].handle;
++		cache_cmd.mem_cache_ops = CAM_MEM_CLEAN_CACHE;
++		rc = cam_mem_mgr_cache_ops(&cache_cmd);
++		if (rc)
++			CAM_ERR(CAM_CDM,
++				"Failed to clean genirq cache rc=%d", rc);
++	}
+ 	rc = cam_hw_cdm_bl_write(cdm_hw,
+ 		(core->gen_irq[fifo_idx].vaddr + (4*len)),
+ 		((4 * core->ops->cdm_required_size_genirq()) - 1),
+@@ -780,6 +790,16 @@ static int cam_hw_cdm_submit_debug_gen_irq(
+ 	core->ops->cdm_write_genirq(
+ 		((uint32_t *)core->gen_irq[fifo_idx].kmdvaddr + len),
+ 		CAM_CDM_DBG_GEN_IRQ_USR_DATA, bit_wr_enable, fifo_idx);
++	{
++		struct cam_mem_cache_ops_cmd cache_cmd;
++
++		cache_cmd.buf_handle = core->gen_irq[fifo_idx].handle;
++		cache_cmd.mem_cache_ops = CAM_MEM_CLEAN_CACHE;
++		rc = cam_mem_mgr_cache_ops(&cache_cmd);
++		if (rc)
++			CAM_ERR(CAM_CDM,
++				"Failed to clean dbg genirq cache rc=%d", rc);
++	}
+ 	rc = cam_hw_cdm_bl_write(cdm_hw,
+ 		(core->gen_irq[fifo_idx].vaddr + (4*len)),
+ 		((4 * core->ops->cdm_required_size_genirq()) - 1),
