@@ -13,15 +13,12 @@ camerad daemon, tizi) is deferred until that lands.
 **Status (2026-07-01):** the driver port is done and running — the modern
 [qualcomm-linux/camera-driver](https://github.com/qualcomm-linux/camera-driver)
 `camera_kt` stack builds into 6.18, all `cam-*` nodes probe, SMMU/mem-mgr work,
-ICP firmware downloads. **Blocked** on the OS04C10 sensor NACKing its I2C
-address at the chip-id probe (0/3 cameras; same board reads 3/3 on legacy 4.9).
-Software is exhausted: a userspace `/dev/mem` replay of the identical CCI
-transaction ACKs on legacy and NACKs on mainline, so the cause is below the
-register interface. See "The blocker" below for surviving leads. As of
-2026-07-01 the branch is rebased onto master, the repro is confirmed
-byte-identical on the rebased tree (`6.18.0-vamos-44d1fee`, currently flashed),
-and `tools/camera/sensor_probe.py` is the standing probe tool. Flash back to
-the legacy A/B reference with `./vamos flash kernel --legacy`.
+ICP firmware downloads. **The historical blocker is SOLVED (2026-07-01):** the OS04C10 NACK was PM8998
+L8 (1.2 V) never being enabled on mainline — see M1 below. All three sensors
+now ACK (chip id `0x5304`) on mainline. Current work: M2/M3 — actual frames
+(`snapshot_standalone` from openpilot branch `camera-mainline-m2`). Boot
+reliability fixes landed too (squashfs `discard`, UFS clock-gating off);
+a residual UFS storm from clock *scaling* remains on some boots.
 
 ---
 
@@ -122,8 +119,17 @@ removal, `__u64` frame ids). That is the only openpilot delta allowed.
       `tools/camera/sensor_probe.py` (0/3, `status0=0x10000000`, `cur=0x2
       exec=0x5 read_level=0x0`, `slave=0x6c`). The QDL blocker was **bad
       physical cabling**, not software. See Log.
-- [ ] **M1 — sensor ACKs (THE blocker):** OS04C10 chip-id read returns
-      `0x5304`. See next section.
+- [x] **M1 — sensor ACKs (SOLVED 2026-07-01):** 3/3 `PROBE OK`, chip id
+      `0x5304` on the mainline kernel. Root cause of the entire NACK saga:
+      **PM8998 L8 (1.2 V) was never enabled on mainline.** Legacy
+      `comma_mici.dts` carries a bare `&pm8998_l8 { regulator-always-on; }`
+      (board requirement, no DT-visible consumer — it feeds the camera sensor
+      power chain). Found via a legacy-vs-mainline **PMIC SPMI register diff**
+      (`tools/camera/pmic_scan.py` over regmap debugfs): L8 ON@1.2V under
+      legacy camera streaming, unconfigured on mainline, while every
+      camera-block register matched. Fix: `regulator-always-on` on
+      `vreg_l8a_1p2` in `sdm845-comma-mici.dts` (mici-only, as in legacy).
+      This retires the scope/LA plan and all remaining M1 leads.
 - [ ] **M2 — first image (the narrow target):** road cam only
       (`DISABLE_WIDE_ROAD=1 DISABLE_DRIVER=1`), `snapshot_standalone` writes a
       real PNG. Exercises sensor→CSIPHY→CSID→IFE→SMMU→req_mgr/sync end-to-end.
