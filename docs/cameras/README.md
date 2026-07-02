@@ -463,3 +463,98 @@ CPAS node's own `interconnects`; per-tree-node `qcom,axi-port-mnoc` /
 `interconnect-names` + `qcom,axi-port-name` (parser:
 `cam_cpas_soc.c` ~130-360, 665-700; sdm845 icc phandles from
 `dt-bindings/interconnect/qcom,sdm845.h`, 2-cell with QCOM_ICC_TAG).
+
+### 2026-07-02 — CPAS ICC votes WIRED (commit 8e498ab): wall moved deep to CDM BL
+
+**Correction to the prime-suspect framing above.** The `cam-cpas` node
+*already* had an AHB `interconnects` (`cam_ahb`, added in an earlier rebase),
+so `bus_icc_based` was already **true** — but the `camera-bus-nodes` tree was
+a bare level0 with **no `qcom,axi-port-mnoc` child**, so `num_axi_ports == 0`
+and `cam_cpas_util_vote_default_ahb_axi` never voted the camera→DDR (mnoc)
+data path at `cpas_start`. That was the real gap.
+
+**Driver reality (important for anyone extending this):** the compiled bus
+backend is **`common/cam_soc_icc.c`** (Kbuild line 243, unconditional), NOT
+`camera_kt/drivers/cam_utils/cam_soc_bus.c` (that's the legacy msm_bus
+variant, gated on `CONFIG_QCOM_BUS_SCALING`, never built — and it
+`#include`s a nonexistent `<linux/msm-bus.h>`). With `CONFIG_SPECTRA_KT=1`
+the register path is `of_icc_get(&pdev->dev, name)` — **by-name lookup on the
+cam-cpas node itself**. So every mnoc/camnoc port's `interconnect-names`
+string must ALSO appear in the **cam-cpas node's own**
+`interconnects`/`interconnect-names` (the child mnoc node's `interconnects`
+is only read for informational src/dst ids). The `src_id`/`dst_id` parsed in
+`cam_cpas_soc.c` are cosmetic under KT.
+
+**The fix (commit `8e498ab`, DTS only — `sdm845-comma-common.dtsi`):**
+- cam-cpas node `interconnect-names = "cam_ahb", "cam_hf_0", "cam_sf_0"`
+  with matching `interconnects`: AHB (`&gladiator_noc MASTER_APPSS_PROC …
+  &config_noc SLAVE_CAMERA_CFG`) + two camera→DDR paths (`&mmss_noc
+  MASTER_CAMNOC_HF0/… SF … &mem_noc SLAVE_EBI1`), 2-cell QCOM_ICC_TAG_ALWAYS.
+- `camera-bus-nodes/level0-nodes` now has two axi ports: `cam-hf-axi`
+  (cell-index 0, `qcom,axi-port-mnoc` → `cam_hf_0`) and `cam-sf-axi`
+  (cell-index 1 → `cam_sf_0`). No `client-name` on these (pure axi ports),
+  so clients without a per-client tree take the `tree_node_valid==false`
+  path in `cam_cpas_util_apply_client_axi_vote`, which still adds
+  `CAM_CPAS_DEFAULT_AXI_BW` to every port at start. camnoc stays
+  clock-controlled (no `control-camnoc-axi-clk`, `camnoc_axi_clk` in the
+  clock list) so no camnoc icc ports.
+- Reference used: CodeLinaro `camera-devicetree` branch
+  `camera-kernel.qclinux.0.0`, `qcm6490-camera.dtsi` cam_cpas node — same
+  parser, confirms the layout (its ports name `cam_hf_0`/`cam_sf_0`/
+  `cam_sf_icp` on both the cpas node and the port children).
+
+**interconnect_summary evidence (device, post-fix):** `ac40000.cam-cpas`
+now appears as a requester on **18** interconnect path rows (was AHB-only
+before); `qxm_camnoc_hf0` and `qxm_camnoc_sf` masters carry the
+`camnoc-axi-min-ib-bw` floor (`2147483647`), and the `ebi` aggregate reads
+`2149523183 / 2147483647` — the camera→DDR route reaches EBI. The paths
+register and vote (`of_icc_set_bw`). Kernel is DTC-clean; `bus_icc_based`
+confirmed true. Sensor probe still **3/3 PROBE OK** (M1 intact).
+
+**Result: the ICC votes materially advanced the wall — this was NOT a null
+elimination.** With votes in place the OPEN gate (road-only,
+`STOP_AFTER_OPEN=1 DISABLE_WIDE_ROAD=1 DISABLE_DRIVER=1`) now reaches, in
+order (host dmesg-stream `vamos-*` breadcrumbs, patch 0040 v4):
+`start_hw init_hw done rc=0` → `vamos-cdm: init enter` →
+`reset_hw: first reg write (pause_core)` → **`pause_core survived`** →
+GDSCR dump (titan=0xf822f000 ife1 ON) → **`about to READ CDM reg` →
+`CDM hw-version reads 0x10000000 (CDM alive)`** →
+`start_hw: config_hw (CDM submit) begin` → **[21 s silence] → SoC-wide RCU
+stall / NMI to hung CPUs**. Pre-ICP the wedge floated between CSID init,
+CDM reset, and post-config; post-ICP the **CDM reset register write and the
+CDM hw-version READ both survive every time**, and the wedge is now pinned
+to **CDM BL submit/execute** (`config_hw`) — the first operation that DMA-
+fetches the CDM command buffer from DDR over CAMNOC and replays register
+writes to the IFE. Victim CPUs sit in innocent code (vmstat_update,
+cpuidle) — an async/DMA bus victim, consistent with a CAMNOC-side hang, not
+a CPU access fault.
+
+**Next candidate (unstarted, one-cycle discipline): CAMNOC QoS / safe-LUT
+for the CDM BL DMA.** `cam_cpastop_init_settings` programs per-port
+priority/danger/**safe_lut**/qosgen from `camnoc_info->specific[]`. The chip
+is TITAN_170_V2 → `CAM_CPAS_TITAN_170_V200` → `cam170_cpas200_camnoc_info`
+(table exists, selection path present in `cam_cpastop_hw.c:909`), but it was
+**not yet confirmed to actually apply at start** on our board (no explicit
+version/QoS print at default debug; the `debug_mdl` mask I used did not
+surface CAM_CPAS/CAM_PERF DBG lines, and the `/data` dmesg-sync loop lost the
+window — the wedge freezes writeback, so on-device log capture of the
+cpas_start instant is unreliable; use `pr_err` breadcrumbs compiled in, not
+runtime debug_mdl, and the **host** dmesg-stream). The SCM path
+(`cam_cpastop_scm_write`, `cam_compat.c:288`) is real (`qcom_scm_io_writel`,
+guarded by `CONFIG_SPECTRA_SECURE`) and only fires for the conditional
+`tcsr_camera_hf_sf_ares_glitch` errata — not the safe-LUT, so candidate (b)
+looks less likely than (a). Recommended next cycle: add `pr_err`
+breadcrumbs around `cam_cpastop_init_settings` (chip-version match + a dump
+of the programmed safe_lut/qosgen for the HF/SF ports) as a new spectra
+patch, confirm QoS lands and compare the LUT values against a legacy 4.9
+CAMNOC register dump; if QoS is correct, move to LLCC/SCID (candidate c) or
+scope the CDM AXI master.
+
+**Dev-loop notes for the resumer:** host has no persistent pyusb; make a
+throwaway venv for `mdma.py` (`python3 -m venv /tmp/mdmavenv &&
+/tmp/mdmavenv/bin/pip install pyusb`, then run mdma.py with that python).
+Flash loop worked first try (`reboot-qdl` → `./vamos flash kernel` → `boot`).
+The by-path udev names still mismatch (M4 item): before any snapshot run,
+`ln -sf /dev/video0 …platform-soc:qcom_cam-req-mgr-video-index0` and
+`/dev/video1 …platform-cam_sync-video-index0`. openpilot on device
+`/data/openpilot` is branch `camera-mainline-m2`, snapshot_standalone built.
