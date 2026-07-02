@@ -759,3 +759,65 @@ device-side openpilot commits host-side and push to the fork
 (`camera-mainline-m2`): local commits openpilot `0ad682eb5` + msgq
 `1c4512a` are saved as patch files in `tmp/openpilot-patches/` (device
 has no push credentials).
+
+### 2026-07-02 — M5 cleanup executed + verified; build-system gotcha found
+
+**Patch series cleaned.** TEMP instrumentation stripped (old spectra
+0040-0042 breadcrumbs, 0046 csiphy/csid dumps, 0048 bus dumps, and the
+update_wm dump inside the buf-done fix). The five real fixes were
+regenerated against the clean series and renumbered (`52293a0`):
+
+Kernel patches (`kernel/patches/`, 26): 0001 dts hook, 0002 ath10k quirk,
+0003/0006 panels, 0004/0005 dispcc, 0007-0009 touch, 0010 spidev,
+0011 wifi MAC, 0012 squashfs discard, 0013-0015 modem/rmtfs, 0016 msm
+camera hook, 0017/0018 camcc GDSC sw-control, 0019/0020 regulator
+(0020 = breadcrumbs, strip later), 0021/0025 GDSC wait timing, 0022 MCLK
+hw_clk_ctrl, 0023/0024 UFS, 0026 mmnoc TBU always-on.
+
+Spectra series (`kernel/spectra-qcom/patches/`, 42): 0001-0016 port
+integration + CCI/legacy-compat fixes; 0017-0036 NACK-era diagnostics
+(mostly disabled by 0024/0038 — strip candidates); 0037 OPP skip;
+0038 quiesce; 0039 CDM breadcrumbs (TEMP, kept for now); and the five
+bring-up fixes:
+  0040 cpas: skip camnoc fill-level monitor reads on Titan 170 v1xx (NoC wedge)
+  0041 cdm: clean genirq buffer cache before BL commit (INVALID_CMD)
+  0042 isp: CAM_ISP_CTX_REQ_MAX 8→20 (camerad queue depth)
+  0043 vfe170: camif subscribe_irq_mask (SOF freeze)
+  0044 vfe bus: OR per-WM done bits (buf_done)
+
+**BUILD-SYSTEM GOTCHA (bit us here):** `install_spectra_qcom` copies the
+submodule with `cp -a` (old mtimes) into the persistent `kernel/linux/out`
+incremental build. A source file whose patch is REMOVED reverts to an old
+mtime and make keeps the **stale object** — the first M5 kernel still
+contained dropped-patch code (caught via a leftover pr_err string at
+runtime). After removing any patch, purge
+`kernel/linux/out/drivers/media/platform/msm/camera` before building.
+
+**Verification (kernel `52293a0`, clean rebuild): GREEN.**
+probe 3/3 OK; 2-cam snapshot exit 0 (road+wide PNGs); camerad 2+ min with
+both IFEs at ~63 irq/s each (~20 fps), no camera errors (only the
+pre-existing benign boot noise: "Unsupported Bus RD Version 0x0" ×2 and
+"cam_vfe_hw_init: inval param" ×4 from the optional bus_rd/vfe-lite
+probes, plus teardown "releasing hw").
+
+**openpilot commits:** host checkout re-authored and PUSHED —
+`greatgitsby/openpilot` `camera-mainline-m2` now has `61de3d0f7`
+(nop-packet pad + startup-flush skip). The msgq visionbuf dma-heap commit
+could NOT be pushed (no `greatgitsby/msgq` fork exists and creating one
+needs user action) — it remains applied on the device and saved as
+`tmp/openpilot-patches/msgq-visionbuf-dmaheap.patch`. **Action item:
+create the msgq fork and push, or vendor the visionbuf change.**
+
+**Known remaining issues:**
+1. M3 driver cam: ICP FW "ICP SS WD Timeout" ~0.7 s after boot in every
+   config (QDSS/tsgen theory queued — legacy comparison pending).
+2. Wifi drop-offs ~60-90 s under load/idle (device keeps running; network
+   only). Makes big file pulls need chunked dd|base64.
+3. gpio.service / sound.service unported — runtime-masked each boot.
+4. Exposure tuning: AE works but bench frames are dim; no tuning pass.
+5. udev by-path names still need the runtime symlinks (M4 leftover).
+6. Runtime CRM flush recovery path still hits camera_kt FLUSHED-state
+   rejection (startup flush skipped; error-path needs INIT+START_DEV).
+7. tizi (OX03C10) untouched.
+8. Strip candidates on next pass: kernel 0020, spectra 0017-0036
+   diagnostics, 0038/0039.
