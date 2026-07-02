@@ -393,3 +393,37 @@ build, unverified.
 `snapshot_standalone`. On-device build (needs legacy kernel for network):
 `GIT_LFS_SKIP_SMUDGE=1` fetch/checkout, then
 `NO_MODELD=1 scons -j$(nproc) system/camerad/camerad system/camerad/snapshot_standalone`.
+
+### 2026-07-01 (late) — PAUSED mid-M2: CDM-era wedge hunt, state for resumption
+
+Where it stands: probe 3/3 and full SpectraMaster init (incl. ICP FW) are
+clean on the CDM-enabled kernel; any run entering `camera_open` has coincided
+with a **total SoC bus wedge** (NMI-unresponsive CPUs, console dead, unsynced
+page cache lost). BUT several wedges happened with no camera run at all —
+prime confound: AGNOS `gpio.service`/`sound.service` (unported subsystems)
+retry-loop on every mainline boot and may be the real wedger. They are NOT
+yet ruled in/out: runtime-masked on the last boot, idle-survival test was
+paused before a verdict.
+
+Resume plan:
+1. Boot, `systemctl mask --runtime gpio.service sound.service`, let the
+   device idle 5-10 min. If it wedges anyway → the services are innocent.
+2. Run the phase gates (openpilot `snapshot_standalone` has
+   `STOP_AFTER_{INIT,OPEN,START}` env gates) with services masked:
+   gate INIT was clean; rerun gate OPEN (road-only) — kernel `1688110+`
+   carries patch 0039 breadcrumbs (`vamos-cdm:` pr_err around
+   cam_hw_cdm_init's resource-enable and the first CDM register write in
+   reset_hw/pause_core). Stream stdout to /dev/ttyMSM0 or watch the console
+   from the host (raw serial capture survives the wedge); the last
+   breadcrumb pinpoints the wedging access.
+3. If CDM's first register write wedges: compare clock/GDSC state vs legacy
+   at that instant (CDM's 5 clocks all enable via soc_util; CPAS start
+   ordering verified correct in cam_cdm_core_common.c:371 before init).
+   Check whether our CPAS actually powers CAMNOC (the June port no-op'd icc
+   votes).
+
+Repo state: vamOS branch `camera` (965ea39) = full lineage + 0038 quiesce +
+0039 breadcrumbs. openpilot branch `camera-mainline-m2` (fork) has the phase
+gates + compat shims; the device /data/openpilot is on it, binaries built.
+Device: mainline kernel `6.18.0-vamos-1688110` flashed (CDM + breadcrumbs).
+sensor_probe.py + pmic_scan.py live in tools/camera/ and on /data.
