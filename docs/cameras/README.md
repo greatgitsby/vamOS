@@ -954,3 +954,40 @@ pattern remains: boot → single tight ssh session <90 s → results into
 not use it as "network recovery" while an on-device test is running).
 Tools checked in: `tools/camera/frame_bench.py` (nv12 stats),
 `tools/camera/vipc_grab.py` (VIPC frame capture).
+
+### 2026-07-02 (cont.) — BPS geometry: two parity fixes landed, artifact narrowed but not yet cured
+
+Fix attempts on the driver-cam 3x-stripe bug, each byte-benchmarked
+against the legacy reference (openpilot fork commits, pushed):
+1. `9647eaf4c` — sensor-mode semantics restored (binned for BPS,
+   full-res+downscale only for IFE, exactly as v0.11.0). Artifact
+   persisted (3x-corr 0.91).
+2. `e7a61b6ea` — v0.11.0 striping-lib artifacts restored to match the
+   binned pipeline: `bps_blobs.h` precomputed striping output,
+   `frame_cycles = 2329024`, CDM striping BL size `0xa100` (the branch
+   had full-res-generated versions: different blob, W*H frame_cycles,
+   0xcfe0). Artifact persisted (3x-corr 0.62/0.94, frame nearly flat
+   y=19±2.9) — geometry still wrong.
+
+Both changes are required for legacy parity regardless (the reference
+pipeline is binned + those blobs) — they are necessary, not sufficient.
+
+**Remaining suspects, in order:**
+1. **`bps_tmp`/frame-process struct layout** (the UAPI migration may
+   have shifted offsets the 2018 FW expects — the FW reads
+   striping_addr/cdm_addr/frames[] from this struct; a shifted offset
+   explains geometry garbage immune to all config-value fixes).
+   Byte-diff the struct definitions and the packed buffer against
+   v0.11.0 (`/data/openpilot_release`), or hexdump the 464-byte
+   `bps_cmd` buffer from both stacks for the same frame and diff.
+2. The branch's added DMI writes in config_bps (BLC knee /
+   linearization EN=1 / gamma) — absent in v0.11.0's flow (EN=0,
+   commented out there); the 2018 FW may mis-handle the extra CDM
+   payload. Try reverting config_bps's CDM program to v0.11.0's.
+3. `cam_buf_io_cfg` UAPI struct layout drift (same class as #1) for
+   the io configs the FW parses from the config-io buffer.
+
+**Also observed:** 3-cam camerad dies after ~16 frames with a CAMNOC
+SLAVE_IRQ/SMMU error then config_ife failure — consistent with the BPS
+writing out of bounds (same root cause candidate); snapshot's short
+runs complete 3/3.
