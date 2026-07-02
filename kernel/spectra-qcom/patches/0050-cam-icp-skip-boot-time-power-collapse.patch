@@ -21,17 +21,16 @@ understood.
 ---
 
 diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c
-index 8c98e0d..ca321ae 100644
+index 8c98e0d..f7fc3cc 100644
 --- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c
 +++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c
-@@ -3856,8 +3856,8 @@ static int cam_icp_mgr_hw_open(void *hw_mgr_priv, void *download_fw_args)
+@@ -3856,8 +3856,7 @@ static int cam_icp_mgr_hw_open(void *hw_mgr_priv, void *download_fw_args)
  		return rc;
  
  	rc = cam_ipe_bps_deint(hw_mgr);
 -	rc = cam_icp_mgr_icp_power_collapse(hw_mgr);
 -	CAM_DBG(CAM_ICP, "deinit all clocks at boot up");
-+	pr_err("vamos-icp: keeping FW alive after boot download (skip boot-time power collapse)
-+");
++	pr_err("vamos-icp: keeping FW alive after boot download (skip boot-time power collapse)\n");
  
  	return rc;
  
