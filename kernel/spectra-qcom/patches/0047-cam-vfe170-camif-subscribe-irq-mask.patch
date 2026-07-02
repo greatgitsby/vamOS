@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:01 2001
+From: Trey Moen <trey@moen.ai>
+Date: Thu, 2 Jul 2026 22:00:00 -0700
+Subject: cam: vfe170: add missing camif subscribe_irq_mask (SOF freeze fix)
+
+Root cause of the SOF freeze: the whole capture path works end to end --
+sensor streams, CSIPHY locks, CSID1 RX counts ~30k clean packets/s
+(crc=0), the CSID pixel path processes frames (pxl_irq_status 0x1ff8),
+and the VFE receives them (top irq status0 reads 0x1f =
+SOF|EOF|EPOCH0|EPOCH1|RUP latched) -- but VFE irq mask0 stays at
+0x3fe00 (bus-wr bits only), so the CPU never gets a CAMIF interrupt,
+no SOF event reaches CRM, and every request times out.
+
+cam_vfe_camif_ver2 resource_start subscribes its irqs with
+reg_data->subscribe_irq_mask0/1. Every VFE variant in this tree
+(vfe175, vfe165_160, vfe175_130, lites) defines subscribe_irq_mask0 =
+0x17 (SOF|EOF|EPOCH0|RUP); cam_vfe170.h alone never sets the fields, so
+the camif subscribes an all-zero mask. The vfe170 camif was evidently
+never exercised on this camera_kt branch. Match the other variants.
+
+(Live-register evidence gathered via a /dev/mem probe on CSID1/VFE1
+mid-stream; /proc/interrupts showed the csid/ife GIC lines frozen while
+packets flowed.)
+---
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe17x/cam_vfe170.h b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe17x/cam_vfe170.h
+index 47a41f8..5291430 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe17x/cam_vfe170.h
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe17x/cam_vfe170.h
+@@ -74,6 +74,8 @@ static struct cam_vfe_camif_reg_data vfe_170_camif_reg_data = {
+ 	.eof_irq_mask                    = 0x00000002,
+ 	.error_irq_mask0                 = 0x0003FC00,
+ 	.error_irq_mask1                 = 0x0FFF7E80,
++	.subscribe_irq_mask0             = 0x00000017,
++	.subscribe_irq_mask1             = 0x00000000,
+ 	.enable_diagnostic_hw            = 0x1,
+ };
+ 
