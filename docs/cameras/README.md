@@ -558,3 +558,87 @@ The by-path udev names still mismatch (M4 item): before any snapshot run,
 `ln -sf /dev/video0 …platform-soc:qcom_cam-req-mgr-video-index0` and
 `/dev/video1 …platform-cam_sync-video-index0`. openpilot on device
 `/data/openpilot` is branch `camera-mainline-m2`, snapshot_standalone built.
+
+### 2026-07-02 (cont.) — WEDGE SOLVED (monitor-array CAMNOC read), five walls fell, stopped at SOF freeze
+
+**The SoC-wide NoC wedge is ROOT-CAUSED and FIXED (patch 0043, commit
+`c284cc0`).** It was never the CDM BL fetch, QoS, SMMU, or the icc votes
+themselves: `cam_cpas_update_monitor_array()` (cam_cpas_hw.c ~2050)
+unconditionally reads three "camnoc fill level" debug registers at CAMNOC
++0xA20/0x1420/0x1A20 — offsets that exist on the newer CAMNOCs camera_kt
+ships on, but hit a dead region on sdm845's Titan 170 V110 → AXI read never
+completes → NoC + all CPUs hang. It's only called from
+`cam_cpas_hw_update_axi_vote` (never `cpas_start`), which is why probe/init
+always survived and the first IFE BW-config blob always died — and why the
+wedge "floated" pre-ICC (without votes, even earlier accesses died). Chain
+of evidence: 0041 (commit `7262a3d`) showed CDM reset+read surviving and the
+trail dying inside the BW blob; 0042 showed every bw layer down through
+`icc_set_bw` completing rc=0, trail ending exactly at the monitor call.
+Guard mirrors the existing 580-only fill-level guard.
+
+**Eliminations settled the coordinator's list:** (a) CAMNOC QoS — APPLIES
+and reads back correct (`vamos-cpas: poweron QoS` breadcrumbs, safe_lut
+readback 0x1 on enabled ports). Note the chip is **Titan 170 V110** per DTS
+`qcom,cpas-hw-ver = <0x170110>` (the "TITAN_170_V2" from ICP FW logs refers
+to Napali v2 silicon, not the CPAS table). (b) SCM safe-LUT —
+`cam_cpastop_scm_write` is real (`qcom_scm_io_writel`, CONFIG_SPECTRA_SECURE)
+and only serves the conditional TCSR-glitch errata; not in play. (c) SMMU —
+all three cam_smmu cbs (ife/icp/cpas-cdm) bind; `cam_mem_get_io_buf` against
+the CDM's own iommu handle returns rc=0 with a valid iova (0x7400000), so
+the BL buffer is mapped in the CDM domain.
+
+**Post-wedge walls, each fixed the same day:**
+1. **GenIRQ INVALID_CMD (patch 0044, `694c967`):** CDM executed the three
+   userspace config BLs (VFE regs written via AHB) then errored 0x10004
+   (BL_DONE|ERROR_INV_CMD) on the kernel-written GenIRQ BL. The genirq
+   buffer is CACHED dma-heap memory written via kernel vmap with no
+   writeback; sdm845's camera SMMU is not IO-coherent → CDM fetched stale
+   zeros. Fix: `cam_mem_mgr_cache_ops(CLEAN)` after writing the command.
+   (Heads-up for other kernel-written camera buffers: same hazard.)
+2. **Buffer import (`e581431` + openpilot msgq `1c4512a`):** no /dev/ion on
+   mainline, so msgq's SConscript picked the generic shm-file VisionBuf →
+   `cam_mem_mgr_map: Failed to import dma_buf fd` storm. Fix: enable
+   `CONFIG_DMABUF_HEAPS(_SYSTEM)` in vamos.config (safe: the patched
+   mem-mgr's heap-find is compiled out; it allocates via the 0003 cmm
+   allocator) + visionbuf.cc allocates from `/dev/dma_heap/system` when
+   present (dmabuf fds; DMA_BUF_IOCTL_SYNC for cache ops).
+3. **Sensor nop packet rejected (openpilot `0ad682eb5`):** camera_kt's
+   `cam_sensor_i2c_pkt_parse` requires len_of_buff strictly > sizeof
+   (cam_packet); camerad's poke allocated exactly 64B. Fix: pad by 8.
+4. **FLUSHED-state rejection (same openpilot commit):** camerad's startup
+   `clearAndRequeue` issues a CRM flush-all; camera_kt (unlike 4.9) moves
+   the ISP ctx to CAM_CTX_FLUSHED, which rejects UPDATE packets until a new
+   INIT+START_DEV. Fix (M2-scope): skip the flush when nothing was ever
+   queued (`ever_queued`). **M4 TODO:** the runtime error-recovery path
+   still flushes and will hit this — needs the proper INIT+START_DEV resume
+   sequence or a kernel-side relaxation.
+5. **Request pool exhaustion (patch 0045, `744e7c9`):** camerad keeps
+   VIPC_BUFFER_COUNT=18 requests in flight; camera_kt's
+   CAM_ISP_CTX_REQ_MAX was 8 ("No more request obj free" → ENOMEM on the
+   10th CONFIG_DEV). Raised to 20 (generic CAM_CTX_REQ_MAX already 20).
+
+**Current state — stopped at SOF freeze (the next wall, one clean cycle):**
+with all of the above, the road-only run completes its entire setup: probe,
+acquire, CSIPHY config+start, IFE init+config (CDM BLs execute, genirq
+completes, `config_hw done rc=0`, IFE BUS RD started), sensor init (312
+regs) + STREAM_ON written (CCI ACKs), all 18 requests queued and scheduled,
+camerad polls sync objects... and **no SOF ever arrives**:
+`__cam_req_mgr_process_sof_freeze: watchdog paused, maybe stream on/off is
+delayed`. Exit is clean (`road: NO FRAME (bring-up failed)`), no crash, no
+wedge, device stays healthy — the dev loop is now fully network-speed.
+Suspects for the next cycle, in order: CSIPHY register programming vs
+legacy (mainline csiphy tables for sdm845 v1.0 PHY; settle_cnt=33,
+data_rate 48MHz-units), CSID RX status registers (lane/CRC/unbounded-frame
+counters — read them live while streaming), CSID input mux/VC-DT config
+from the acquire packet, MCLK still running during stream. The 4.9 kernel
+is the reference for a csiphy/csid register diff (same method that cracked
+M1 and the wedge).
+
+**Repo state:** branch `camera` at `744e7c9` — commits this session:
+`8e498ab` (ICC DT), `650cb85` (doc), `7262a3d` (0041/0042 instrumentation),
+`c284cc0` (0043 wedge fix), `694c967` (0044 genirq cache), `e581431`
+(dmabuf heaps config), `744e7c9` (0045 req pool). Device `/data/openpilot`
+(camera-mainline-m2) local commits: msgq `1c4512a`, openpilot `0ad682eb5`
+(not pushed). Kernel on device: `6.18.0-vamos-e581431` (has 0043/0044/0045
++ heaps). Instrumentation 0040-0042 is TEMP — strip at M5 along with the
+vamos-bw/vamos-cdm/vamos-cpas prints.
