@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:01 2001
+From: Trey Moen <trey@moen.ai>
+Date: Fri, 3 Jul 2026 03:00:00 -0700
+Subject: cam: icp: skip FW MEM_MAP/UNMAP unsupported by sdm845 firmware
+
+The sdm845-era ICP firmware (CICP.FW.1.0-00050, 2018) predates the
+HFI_IPEBPS_CMD_OPCODE_MEM_MAP/UNMAP opcodes camera_kt sends around the
+io-config stage of BPS/IPE acquire: the FW debug queue logs
+"IB_DM: Unrecognized opcode 0x0000000e at ipebpsdomain.c:1278" and never
+responds, so the 5 s wait in cam_icp_process_stream_settings fails the
+whole acquire ("sending config io mapping failed rc -110"). The legacy
+4.9 driver never sends MEM_MAP; the io-config regions are delivered via
+the CONFIG_IO async command which this FW handles. Make
+cam_icp_process_stream_settings a no-op.
+---
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c
+index 8c98e0d..ed38387 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c
+@@ -4377,6 +4377,20 @@ static int cam_icp_process_stream_settings(
+ 	struct hfi_cmd_ipe_bps_map  *map_cmd;
+ 	struct hfi_cmd_ipebps_async *async_direct;
+ 
++	/*
++	 * The sdm845-era ICP firmware (CICP.FW.1.0-00050) predates the
++	 * HFI_IPEBPS_CMD_OPCODE_MEM_MAP/UNMAP opcodes (0xe/0xf) and rejects
++	 * them ("Unrecognized opcode 0x0000000e"), never responding - the
++	 * 5 s wait then fails the whole acquire. The io-config regions are
++	 * delivered via the CONFIG_IO async command instead, as on the
++	 * legacy 4.9 driver which never sends MEM_MAP. Skip it.
++	 */
++	if (map_unmap)
++		CAM_DBG(CAM_ICP, "skipping FW MEM_MAP (unsupported by FW)");
++	else
++		CAM_DBG(CAM_ICP, "skipping FW MEM_UNMAP (unsupported by FW)");
++	return 0;
++
+ 	map_cmd_size =
+ 		sizeof(struct hfi_cmd_ipe_bps_map) +
+ 		((cmd_mem_regions->num_regions - 1) *

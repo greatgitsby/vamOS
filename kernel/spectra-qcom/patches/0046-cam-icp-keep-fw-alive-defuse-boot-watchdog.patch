@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:01 2001
+From: Trey Moen <trey@moen.ai>
+Date: Fri, 3 Jul 2026 03:30:00 -0700
+Subject: cam: icp: keep FW alive after boot and defuse its boot watchdog
+
+The sdm845 ICP FW dies with SYS_ERROR SFR "ICP SS WD Timeout" a
+constant ~0.7 s after its first boot on mainline unless it receives
+host HFI traffic after SYS_INIT: verified by discriminator runs where
+HFI messages every 200 ms kept the FW healthy indefinitely (and the
+deadline never re-armed after traffic stopped), while an untouched
+running FW, a hard-close power collapse and a PC_PREP-handshake power
+collapse all died on the same deadline. Legacy 4.9 is immune because
+its camerad flow talks to the FW immediately.
+
+Keep the FW running after the boot-time download (skip the power
+collapse - the WD state survives collapse and kills the resumed
+instance) and send two benign NULL-user_data pings at +250/+500 ms
+(the ping-ack handler tolerates a NULL context). Skip the acquire-time
+resume re-init when the a5 is already powered so cpas_start is not
+double-invoked.
+---
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c
+index ed38387..9bbb682 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c
+@@ -3773,6 +3773,12 @@ static int cam_icp_mgr_icp_resume(struct cam_icp_hw_mgr *hw_mgr)
+ 		return rc;
+ 	}
+ 
++	if (((struct cam_hw_info *)icp_dev_intf->hw_priv)->hw_state ==
++		CAM_HW_STATE_POWER_UP) {
++		CAM_DBG(CAM_ICP, "ICP already powered, skip resume");
++		return 0;
++	}
++
+ 	rc = icp_dev_intf->hw_ops.init(icp_dev_intf->hw_priv, NULL, 0);
+ 	if (rc)
+ 		return -EINVAL;
+@@ -3856,8 +3862,22 @@ static int cam_icp_mgr_hw_open(void *hw_mgr_priv, void *download_fw_args)
+ 		return rc;
+ 
+ 	rc = cam_ipe_bps_deint(hw_mgr);
+-	rc = cam_icp_mgr_icp_power_collapse(hw_mgr);
+-	CAM_DBG(CAM_ICP, "deinit all clocks at boot up");
++
++	/*
++	 * Do not power collapse the ICP after the boot-time download on
++	 * sdm845: the FW (CICP.FW.1.0-00050) arms a subsystem watchdog at
++	 * boot that survives the collapsed state and kills the next
++	 * instance ~0.7 s after first boot ("SFR: ICP SS WD Timeout") in
++	 * every PC flavor tried (hard close, PC_PREP handshake). Keep the
++	 * FW running - it services its own WD once it has seen host
++	 * traffic after SYS_INIT - and send a benign ping (NULL user_data
++	 * is handled) to defuse the boot watchdog window.
++	 */
++	msleep(250);
++	hfi_send_system_cmd(HFI_CMD_SYS_PING, 0, 0);
++	msleep(250);
++	hfi_send_system_cmd(HFI_CMD_SYS_PING, 0, 0);
++	CAM_INFO(CAM_ICP, "FW kept alive after boot download (WD defused)");
+ 
+ 	return rc;
+ 
