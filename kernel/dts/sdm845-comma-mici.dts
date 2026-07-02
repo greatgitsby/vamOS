@@ -63,3 +63,14 @@
 &wifi {
 	qcom,calibration-variant = "comma-mici";
 };
+
+/*
+ * Board requirement carried from legacy AGNOS (comma_mici.dts: "&pm8998_l8 {
+ * regulator-always-on; }"): L8 (1.2V) feeds the camera sensor power chain on
+ * mici with no DT-visible consumer. Without it all three OS04C10s NACK their
+ * I2C address (rails/MCLK/CCI all measure correct) — found 2026-07-01 via a
+ * legacy-vs-mainline PMIC SPMI register diff. mici-only, as in legacy.
+ */
+&vreg_l8a_1p2 {
+	regulator-always-on;
+};
