@@ -991,3 +991,52 @@ pipeline is binned + those blobs) — they are necessary, not sufficient.
 SLAVE_IRQ/SMMU error then config_ife failure — consistent with the BPS
 writing out of bounds (same root cause candidate); snapshot's short
 runs complete 3/3.
+
+### 2026-07-02 (final) — DRIVER CAM FIXED: CSID was unpacking the RDI to plain16 (kernel patch 0047)
+
+**Discriminator that cracked it:** dumped the BPS input (raw RDI bayer
+buffer) via a snapshot_standalone instrumentation and ran a byte-period
+autocorrelation: content row period was **2688 bytes** in a buffer
+allocated at 2016 B/row (packed RAW12 for binned 1344-wide). The sensor
+WAS binned; the IFE was writing **unpacked 16-bit plain** rows.
+
+**Root cause (camera_kt, kernel side):** `cam_ife_hw_mgr_acquire_res_
+ife_csid_rdi` sets `crop_enable = drop_enable = true` unconditionally
+(comment says "CSID will enable only for ver 480 HW" — nothing enforces
+it). `cam_ife_csid_get_format_rdi` takes `crop||drop` as `rpp` on every
+HW version, and for RAW12→RAW12 that flips decode from payload
+passthrough (0xf, packed) to plain16 unpacking (0x3). Downstream: RDI
+rows overflow the packed-sized buffer (**the CAMNOC SLAVE_IRQ/SMMU
+faults**), and the BPS reads misaligned bayer (**the 3x-repeat + dead
+band**). Legacy 4.9 forces crop off for payload-only RDI paths.
+
+**Fix:** `kernel/patches… spectra-qcom/patches/0047-cam-csid-no-rdi-rpp-
+on-pre480-hw.patch` — in `cam_ife_csid_init_config_rdi_path`, on
+non-480/175v130 HW with in_format == out_format, force crop/drop off so
+the RDI stays packed passthrough (legacy semantics).
+
+**Verification (kernel 6.18.0-vamos-c23d898 + openpilot 5a0aba169):**
+- bayer dump row period: **2016 B** (packed, correct)
+- snapshot driver: 3x-corr **-0.44/-0.04** (legacy -0.42/-0.02), bottom
+  band gone (21.2 vs frame mean 21.3)
+- camerad AE driver frame vs legacy reference: y 47.0/43.9,
+  **u 123.4/123.8, v 142.2/141.3** — geometry exact, color matches
+- visual: `tmp/frames/fix_ae_driver.png` indistinguishable from
+  `ref_legacy_driver.png` (same scene, full height, single image)
+- **endurance: 3-cam camerad >4 min, 0 CAMNOC/SMMU faults, 3264 SOFs**
+  (the ~16-frame CAMNOC crash was the same root cause — RDI overflow)
+
+**Final benchmark: all three cameras match the legacy reference.**
+
+Not the cause (each eliminated en route, kept where they restore legacy
+parity): sensor mode semantics (9647eaf4c — still correct to keep),
+striping blobs/frame_cycles (e7a61b6ea — required companions of the
+binned mode), BPS DMI writes (5a0aba169 — legacy runs without them),
+UAPI struct layouts (byte-identical), KMD frame-process/CONFIG_IO paths
+(semantically identical; FW acks CONFIG_IO SUCCESS).
+
+**Device state note:** `/data/openpilot/launch_openpilot.sh` is neutered
+(exits 0) — the boot-time openpilot launch was starting camerad, which
+(pre-fix) crashed and wedged the ICP (CPAS "client is in start state",
+then icp_fd assert on every later run until reboot). Restore it when
+the userspace is meant to run at boot.
