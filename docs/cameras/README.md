@@ -427,3 +427,39 @@ Repo state: vamOS branch `camera` (965ea39) = full lineage + 0038 quiesce +
 gates + compat shims; the device /data/openpilot is on it, binaries built.
 Device: mainline kernel `6.18.0-vamos-1688110` flashed (CDM + breadcrumbs).
 sensor_probe.py + pmic_scan.py live in tools/camera/ and on /data.
+
+### 2026-07-02 — wifi rebase (SSH!), wedge hunt narrowed to CPAS ICC votes
+
+**Branch `camera` rebased onto `wifi`** (71 commits clean; patches renumbered
+0016-0024, duplicate squashfs fix dropped). **Wifi works on mainline; SSH at
+`comma@10.0.0.56`** — dev loop is now network-speed; serial only for
+wedge recovery + QDL.
+
+**Wedge hunt (SoC-wide NoC hang at IFE bring-up), eliminations with
+evidence** (instrumentation = spectra patch 0040 v4 + kernel patches):
+- gpio/sound services: masked, wedge persists (they're still suspects for
+  *idle* deaths, unproven either way).
+- CDM: exonerated — boot-time probe init completes every boot (incl. reset
+  IRQ); acquire-time init completed fully in one run (GDSCR dump + config
+  reached). Wedge point FLOATS between CSID init, CDM reset, and
+  post-config — signature of an async/DMA victim, not the CPU's access.
+- csid "csid2" naming: red herring — camera_kt keeps ONE static
+  `csid_dev_name[8]` shared by all instances (upstream bug, cosmetic).
+- GDSC wait timing (0025: bps/ipe/ife CLK_DIS_WAIT=0xF EN_FEW=2 like
+  legacy): kept, didn't fix.
+- mmnoc MMU TBU GDSCs unvoted (0026: ALWAYS_ON): kept, didn't fix.
+- GDSCR dump at config time: titan+ife1 ON, PD get_syncs all rc=0.
+
+**Prime suspect (structural, port-era deferred item): CPAS interconnect
+votes.** The June port no-op'd ICC; the DTS `cam-cpas` node has NO
+`interconnects` and the `camera-bus-nodes` tree is a bare level0. So
+`bus_icc_based=false` and NOTHING votes the camera NoC→DDR path at RPMh —
+while the live ICP (HFI queue DMA) and later IFE traffic need it. Explains
+the floating wedge + boot-time-OK (bootloader/initial BCM state still hot).
+camera_kt natively supports ICC: `bus_icc_based =
+of_property_read_bool(cpas_node, "interconnects")`; AHB client from the
+CPAS node's own `interconnects`; per-tree-node `qcom,axi-port-mnoc` /
+`qcom,axi-port-camnoc` children with their own `interconnects` +
+`interconnect-names` + `qcom,axi-port-name` (parser:
+`cam_cpas_soc.c` ~130-360, 665-700; sdm845 icc phandles from
+`dt-bindings/interconnect/qcom,sdm845.h`, 2-cell with QCOM_ICC_TAG).
