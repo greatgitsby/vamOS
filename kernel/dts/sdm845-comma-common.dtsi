@@ -1090,9 +1090,14 @@
 					   "svs", "svs_l1", "nominal",
 					   "turbo";
 			operating-points-v2 = <&cam_cpas_opp_table>;
-			interconnects = <&gladiator_noc MASTER_APPSS_PROC 0
-					 &config_noc SLAVE_CAMERA_CFG 0>;
-			interconnect-names = "cam_ahb";
+			interconnects =
+				<&gladiator_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+				 &config_noc SLAVE_CAMERA_CFG QCOM_ICC_TAG_ALWAYS>,
+				<&mmss_noc MASTER_CAMNOC_HF0 QCOM_ICC_TAG_ALWAYS
+				 &mem_noc SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>,
+				<&mmss_noc MASTER_CAMNOC_SF QCOM_ICC_TAG_ALWAYS
+				 &mem_noc SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
+			interconnect-names = "cam_ahb", "cam_hf_0", "cam_sf_0";
 			cam-ahb-num-cases = <8>;
 			cam-ahb-bw-KBps = <0 0>, <0 300000>, <0 300000>,
 					   <0 300000>, <0 300000>, <0 300000>,
@@ -1118,8 +1123,31 @@
 			};
 
 			camera-bus-nodes {
-				cpas_bus_level0: level0 {
+				level0-nodes {
 					level-index = <0>;
+
+					cpas_hf_axi: cam-hf-axi {
+						cell-index = <0>;
+						node-name = "cam-hf-axi";
+						ib-bw-voting-needed;
+						qcom,axi-port-mnoc {
+							interconnect-names = "cam_hf_0";
+							interconnects =
+								<&mmss_noc MASTER_CAMNOC_HF0 QCOM_ICC_TAG_ALWAYS
+								 &mem_noc SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
+						};
+					};
+
+					cpas_sf_axi: cam-sf-axi {
+						cell-index = <1>;
+						node-name = "cam-sf-axi";
+						qcom,axi-port-mnoc {
+							interconnect-names = "cam_sf_0";
+							interconnects =
+								<&mmss_noc MASTER_CAMNOC_SF QCOM_ICC_TAG_ALWAYS
+								 &mem_noc SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
+						};
+					};
 				};
 			};
 		};
