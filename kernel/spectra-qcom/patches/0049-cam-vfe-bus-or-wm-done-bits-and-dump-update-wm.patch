@@ -1,0 +1,46 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:01 2001
+From: Trey Moen <trey@moen.ai>
+Date: Fri, 3 Jul 2026 01:00:00 -0700
+Subject: cam: vfe bus: OR per-WM done bits into the subscribe mask
+
+cam_vfe_bus_start_wm ASSIGNS its WM's done bit into
+bus_irq_reg_mask[REG1] instead of OR-ing, so for a multi-WM output with
+no composite group only the LAST WM's buf-done irq is subscribed. The
+0048 breadcrumbs show exactly that on the FULL port (2 WMs, Y idx3 +
+UV idx4, comp=0): subscribe mask reads [0x0 0x10 0x0] - WM3's 0x8 got
+overwritten. The vfe_out handler then can never see the Y-plane done,
+so buf_done never assembles even when both WMs complete. Ports with a
+composite group never hit this (the comp mask replaces the array),
+which is why the newer targets don't notice. Make it |=.
+
+Also TEMP: dump each update_wm reg-pair set (en_cfg, iova, geometry)
+to verify the CDM-programmed per-frame WM enable/address values.
+---
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe_bus/cam_vfe_bus_ver2.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe_bus/cam_vfe_bus_ver2.c
+index daf72c8..a14794f 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe_bus/cam_vfe_bus_ver2.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe_bus/cam_vfe_bus_ver2.c
+@@ -1446,7 +1446,7 @@ static int cam_vfe_bus_start_wm(
+ 		cam_io_w_mb(rsrc_data->stride, (common_data->mem_base +
+ 			rsrc_data->hw_regs->stride));
+ 
+-	bus_irq_reg_mask[CAM_VFE_BUS_IRQ_REG1] = (1 << rsrc_data->index);
++	bus_irq_reg_mask[CAM_VFE_BUS_IRQ_REG1] |= (1 << rsrc_data->index);
+ 
+ 	/* enable ubwc if needed*/
+ 	if (rsrc_data->en_ubwc) {
+@@ -3381,6 +3381,13 @@ static int cam_vfe_bus_update_wm(void *priv, void *cmd_args,
+ 			wm_data->hw_regs->cfg,
+ 			wm_data->en_cfg);
+ 
++		pr_err("vamos-bus2: update_wm idx=%d en_cfg=0x%x addr=0x%x w=%u h=%u stride=%u\n",
++			wm_data->index, wm_data->en_cfg,
++			update_buf->wm_update->image_buf[i] ?
++				(uint32_t)update_buf->wm_update->image_buf[i]
++				: 0,
++			wm_data->width, wm_data->height, wm_data->stride);
++
+ 		/* set initial configuration done */
+ 		if (!wm_data->init_cfg_done)
+ 			wm_data->init_cfg_done = true;
