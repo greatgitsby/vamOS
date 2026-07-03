@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:01 2001
+From: Trey Moen <trey@moen.ai>
+Date: Wed, 1 Jul 2026 19:00:00 -0700
+Subject: ufs: qcom: disable UFS clock gating and scaling on the comma four
+
+Clock gating (incl. hibern8-with-clk-gating) and clock scaling
+(gear-change pwr ctrl) drive a boot-time/idle UIC storm on the comma four
+SDM845 (pwr ctrl / uic cmd completion timeouts, TSTBUS dumps, link left
+degraded), even with phy_calibrate() on resume (see the hibern8 patch).
+Remove those two windows.
+
+Aggressive power collapse (UFSHCD_CAP_AGGR_POWER_COLLAPSE) and runtime PM
+autosuspend (UFSHCD_CAP_RPM_AUTOSUSPEND) were never shown to contribute to
+the storm, so keep them enabled.
+---
+
+diff --git a/drivers/ufs/host/ufs-qcom.c b/drivers/ufs/host/ufs-qcom.c
+index eba0e6617..75aa3aa41 100644
+--- a/drivers/ufs/host/ufs-qcom.c
++++ b/drivers/ufs/host/ufs-qcom.c
+@@ -1159,11 +1159,14 @@ static void ufs_qcom_set_host_caps(struct ufs_hba *hba)
+
+ static void ufs_qcom_set_caps(struct ufs_hba *hba)
+ {
+-	hba->caps |= UFSHCD_CAP_CLK_GATING | UFSHCD_CAP_HIBERN8_WITH_CLK_GATING;
+-	hba->caps |= UFSHCD_CAP_CLK_SCALING | UFSHCD_CAP_WB_WITH_CLK_SCALING;
++	/*
++	 * comma four (SDM845): clock gating (incl. hibern8-with-clk-gating)
++	 * and clock scaling (gear-change pwr ctrl) drive a boot-time/idle UIC
++	 * storm even with phy_calibrate() on resume; leave them off.
++	 */
+ 	hba->caps |= UFSHCD_CAP_AUTO_BKOPS_SUSPEND;
+ 	hba->caps |= UFSHCD_CAP_WB_EN;
+ 	hba->caps |= UFSHCD_CAP_AGGR_POWER_COLLAPSE;
+ 	hba->caps |= UFSHCD_CAP_RPM_AUTOSUSPEND;
+
+ 	ufs_qcom_set_host_caps(hba);
+ }

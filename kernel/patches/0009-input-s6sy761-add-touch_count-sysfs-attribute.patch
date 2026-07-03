@@ -1,3 +1,12 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Trey Moen <trey@moen.ai>
+Date: Mon, 15 Jun 2026 12:00:00 +0000
+Subject: input: s6sy761: add a touch_count sysfs attribute
+
+Export the number of active touch points as a sysfs attribute, matching
+the edt-ft5x06 touch_count attribute, for the s6sy761 panel used on the
+comma four.
+---
 diff --git a/drivers/input/touchscreen/s6sy761.c b/drivers/input/touchscreen/s6sy761.c
 index e1518a75a..2d38133d9 100644
 --- a/drivers/input/touchscreen/s6sy761.c

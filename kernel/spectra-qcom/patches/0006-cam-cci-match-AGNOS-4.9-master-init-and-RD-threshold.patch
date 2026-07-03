@@ -1,0 +1,120 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Trey Moen <trey@moen.ai>
+Date: Thu, 2 Jul 2026 18:34:43 -0700
+Subject: [PATCH] cam: cci: match AGNOS 4.9 master init and RD-threshold order
+
+cam_cci_soc.c: initialise the per-master queue sizes and RD FIFO
+thresholds in the legacy order, flush all write workqueues on the first
+ref, and drop the CCI_VERSION_1_2_9 special-casing that does not apply to
+the sdm845 CCI on this board.
+---
+ .../cam_sensor_module/cam_cci/cam_cci_soc.c   | 54 +++++++++++--------
+ 1 file changed, 33 insertions(+), 21 deletions(-)
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_soc.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_soc.c
+index b225181..3b15e0e 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_soc.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_soc.c
+@@ -7,6 +7,19 @@
+ #include "cam_cci_dev.h"
+ #include "cam_cci_core.h"
+ 
++static void cam_cci_config_master_queues(struct cci_device *cci_dev,
++	uint32_t max_queue_0_size, uint32_t max_queue_1_size)
++{
++	int master;
++
++	for (master = 0; master < MASTER_MAX; master++) {
++		cci_dev->cci_i2c_queue_info[master][QUEUE_0].max_queue_size =
++			max_queue_0_size;
++		cci_dev->cci_i2c_queue_info[master][QUEUE_1].max_queue_size =
++			max_queue_1_size;
++	}
++}
++
+ static int cam_cci_init_master(struct cci_device *cci_dev,
+ 	enum cci_i2c_master_t master)
+ {
+@@ -18,13 +31,8 @@ static int cam_cci_init_master(struct cci_device *cci_dev,
+ 	soc_info = &cci_dev->soc_info;
+ 	base = soc_info->reg_map[0].mem_base;
+ 
+-	if (cci_dev->hw_version == CCI_VERSION_1_2_9) {
+-		max_queue_0_size = CCI_I2C_QUEUE_0_SIZE_V_1_2;
+-		max_queue_1_size = CCI_I2C_QUEUE_1_SIZE_V_1_2;
+-	} else {
+-		max_queue_0_size = CCI_I2C_QUEUE_0_SIZE;
+-		max_queue_1_size = CCI_I2C_QUEUE_1_SIZE;
+-	}
++	max_queue_0_size = CCI_I2C_QUEUE_0_SIZE;
++	max_queue_1_size = CCI_I2C_QUEUE_1_SIZE;
+ 
+ 	cci_dev->master_active_slave[master]++;
+ 	if (!cci_dev->cci_master_info[master].is_initilized) {
+@@ -42,6 +50,8 @@ static int cam_cci_init_master(struct cci_device *cci_dev,
+ 		cci_dev->cci_master_info[master].reset_pending = true;
+ 		cci_dev->cci_master_info[master].status = 0;
+ 		if (cci_dev->ref_count == 1) {
++			cam_cci_config_master_queues(cci_dev,
++				max_queue_0_size, max_queue_1_size);
+ 			cam_io_w_mb(CCI_RESET_CMD_RMSK,
+ 				base + CCI_RESET_CMD_ADDR);
+ 			cam_io_w_mb(0x1, base + CCI_RESET_CMD_ADDR);
+@@ -61,13 +71,16 @@ static int cam_cci_init_master(struct cci_device *cci_dev,
+ 			return rc;
+ 		}
+ 
+-		flush_workqueue(cci_dev->write_wq[master]);
+-
+-		/* Setting up the queue size for master */
+-		cci_dev->cci_i2c_queue_info[master][QUEUE_0].max_queue_size
+-					= max_queue_0_size;
+-		cci_dev->cci_i2c_queue_info[master][QUEUE_1].max_queue_size
+-					= max_queue_1_size;
++		if (cci_dev->ref_count == 1) {
++			for (i = 0; i < MASTER_MAX; i++) {
++				if (cci_dev->write_wq[i])
++					flush_workqueue(cci_dev->write_wq[i]);
++			}
++		} else {
++			flush_workqueue(cci_dev->write_wq[master]);
++			cam_cci_config_master_queues(cci_dev,
++				max_queue_0_size, max_queue_1_size);
++		}
+ 
+ 		CAM_DBG(CAM_CCI, "CCI Master[%d] :: Q0: %d Q1: %d", master,
+ 			cci_dev->cci_i2c_queue_info[master][QUEUE_0]
+@@ -126,6 +139,7 @@ int cam_cci_init(struct v4l2_subdev *sd,
+ 		return rc;
+ 	}
+ 
++
+ 	if (cci_dev->ref_count++) {
+ 		rc = cam_cci_init_master(cci_dev, master);
+ 		if (rc) {
+@@ -139,7 +153,7 @@ int cam_cci_init(struct v4l2_subdev *sd,
+ 	}
+ 
+ 	ahb_vote.type = CAM_VOTE_ABSOLUTE;
+-	ahb_vote.vote.level = CAM_LOWSVS_VOTE;
++	ahb_vote.vote.level = CAM_SVS_VOTE;
+ 	axi_vote.num_paths = 1;
+ 	axi_vote.axi_path[0].path_data_type = CAM_AXI_PATH_DATA_ALL;
+ 	axi_vote.axi_path[0].transac_type = CAM_AXI_TRANSACTION_WRITE;
+@@ -187,12 +201,10 @@ int cam_cci_init(struct v4l2_subdev *sd,
+ 	cam_io_w_mb(0x1, base + CCI_IRQ_GLOBAL_CLEAR_CMD_ADDR);
+ 
+ 	/* Set RD FIFO threshold for M0 & M1 */
+-	if (cci_dev->hw_version != CCI_VERSION_1_2_9) {
+-		cam_io_w_mb(CCI_I2C_RD_THRESHOLD_VALUE,
+-				base + CCI_I2C_M0_RD_THRESHOLD_ADDR);
+-		cam_io_w_mb(CCI_I2C_RD_THRESHOLD_VALUE,
+-				base + CCI_I2C_M1_RD_THRESHOLD_ADDR);
+-	}
++	cam_io_w_mb(CCI_I2C_RD_THRESHOLD_VALUE,
++			base + CCI_I2C_M0_RD_THRESHOLD_ADDR);
++	cam_io_w_mb(CCI_I2C_RD_THRESHOLD_VALUE,
++			base + CCI_I2C_M1_RD_THRESHOLD_ADDR);
+ 
+ 	cci_dev->cci_state = CCI_STATE_ENABLED;
+ 

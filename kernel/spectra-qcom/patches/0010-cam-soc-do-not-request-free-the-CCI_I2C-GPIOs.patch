@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Trey Moen <trey@moen.ai>
+Date: Thu, 2 Jul 2026 18:35:19 -0700
+Subject: [PATCH] cam: soc: do not request/free the CCI_I2C GPIOs
+
+On sdm845 the CCI I2C pads are driven by the CCI block via pinctrl, not
+as plain GPIOs; requesting them conflicts with the CCI controller. Skip
+CCI_I2C_* entries in the platform gpio request/free table, matching
+legacy 4.9.
+---
+ .../camera_kt/drivers/cam_utils/cam_soc_util.c    | 15 ++++++++++++++-
+ 1 file changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_utils/cam_soc_util.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_utils/cam_soc_util.c
+index d326e16..704a5e1 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_utils/cam_soc_util.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_utils/cam_soc_util.c
+@@ -20,6 +20,12 @@
+ 
+ static char supported_clk_info[256];
+ 
++static bool cam_soc_util_gpio_label_is_cci_i2c(const cam_gpio *gpio)
++{
++	return gpio && gpio->label &&
++		!strncmp(gpio->label, "CCI_I2C_", sizeof("CCI_I2C_") - 1);
++}
++
+ int cam_soc_util_get_clk_level(struct cam_hw_soc_info *soc_info,
+ 	int64_t clk_rate, int clk_idx, int32_t *clk_lvl)
+ {
+@@ -1241,6 +1247,9 @@ static int cam_soc_util_request_gpio_table(
+ 	}
+ 	if (gpio_en) {
+ 		for (i = 0; i < size; i++) {
++			if (cam_soc_util_gpio_label_is_cci_i2c(&gpio_tbl[i])) {
++				continue;
++			}
+ 			rc = gpio_request_one(gpio_tbl[i].gpio,
+ 				gpio_tbl[i].flags, gpio_tbl[i].label);
+ 			if (rc) {
+@@ -1254,8 +1263,12 @@ static int cam_soc_util_request_gpio_table(
+ 			}
+ 		}
+ 	} else {
+-		for (i = 0; i < size; i++)
++		for (i = 0; i < size; i++) {
++			if (cam_soc_util_gpio_label_is_cci_i2c(&gpio_tbl[i])) {
++				continue;
++			}
+ 			gpio_free(gpio_tbl[i].gpio);
++		}
+ 	}
+ 
+ 	return rc;

@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Trey Moen <trey@moen.ai>
+Date: Thu, 2 Jul 2026 18:35:41 -0700
+Subject: [PATCH] cam: cdm: clean the genirq buffer cache before committing its
+ BL
+
+The GenIRQ command buffer is CACHED dma-heap memory written via a kernel
+vmap; sdm845 camera SMMU is not IO-coherent, so the CDM DMA-fetched
+stale zeros and errored with ERROR_INV_CMD. Clean the cache after
+writing the GenIRQ command.
+---
+ .../drivers/cam_cdm/cam_cdm_hw_core.c         | 20 +++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cdm/cam_cdm_hw_core.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cdm/cam_cdm_hw_core.c
+index 9c44f3c..58f2601 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cdm/cam_cdm_hw_core.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cdm/cam_cdm_hw_core.c
+@@ -726,6 +726,16 @@ static int cam_hw_cdm_submit_gen_irq(
+ 		((uint32_t *)core->gen_irq[fifo_idx].kmdvaddr + len),
+ 		core->bl_fifo[fifo_idx].bl_tag,
+ 		bit_wr_enable, fifo_idx);
++	{
++		struct cam_mem_cache_ops_cmd cache_cmd;
++
++		cache_cmd.buf_handle = core->gen_irq[fifo_idx].handle;
++		cache_cmd.mem_cache_ops = CAM_MEM_CLEAN_CACHE;
++		rc = cam_mem_mgr_cache_ops(&cache_cmd);
++		if (rc)
++			CAM_ERR(CAM_CDM,
++				"Failed to clean genirq cache rc=%d", rc);
++	}
+ 	rc = cam_hw_cdm_bl_write(cdm_hw,
+ 		(core->gen_irq[fifo_idx].vaddr + (4*len)),
+ 		((4 * core->ops->cdm_required_size_genirq()) - 1),
+@@ -778,6 +788,16 @@ static int cam_hw_cdm_submit_debug_gen_irq(
+ 	core->ops->cdm_write_genirq(
+ 		((uint32_t *)core->gen_irq[fifo_idx].kmdvaddr + len),
+ 		CAM_CDM_DBG_GEN_IRQ_USR_DATA, bit_wr_enable, fifo_idx);
++	{
++		struct cam_mem_cache_ops_cmd cache_cmd;
++
++		cache_cmd.buf_handle = core->gen_irq[fifo_idx].handle;
++		cache_cmd.mem_cache_ops = CAM_MEM_CLEAN_CACHE;
++		rc = cam_mem_mgr_cache_ops(&cache_cmd);
++		if (rc)
++			CAM_ERR(CAM_CDM,
++				"Failed to clean dbg genirq cache rc=%d", rc);
++	}
+ 	rc = cam_hw_cdm_bl_write(cdm_hw,
+ 		(core->gen_irq[fifo_idx].vaddr + (4*len)),
+ 		((4 * core->ops->cdm_required_size_genirq()) - 1),

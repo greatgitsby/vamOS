@@ -1,0 +1,58 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Trey Moen <trey@moen.ai>
+Date: Thu, 2 Jul 2026 18:34:15 -0700
+Subject: [PATCH] cam: soc: skip the probe-time power-domain cycle when opted
+ out
+
+The stock driver does a get_sync/put_sync right after pm_runtime_enable
+to force the GDSC off at probe. On sdm845 this perturbs the sensor
+bring-up ordering, so gate it behind the qcom,skip-probe-power-domain-
+cycle DT property (set on the camera nodes).
+---
+ .../drivers/cam_utils/cam_soc_util.c          | 24 ++++++++++++-------
+ 1 file changed, 16 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_utils/cam_soc_util.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_utils/cam_soc_util.c
+index 23eb1a0..d326e16 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_utils/cam_soc_util.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_utils/cam_soc_util.c
+@@ -1864,13 +1864,20 @@ int cam_soc_util_request_platform_resource(
+ 
+ 	pm_runtime_enable(soc_info->dev);
+ 
+-	/*
+-	 * Doing a pm_runtime_get_sync() and pm_runtime_put_sync() after pm_runtime_enable
+-	 * makes sure that the GDSC is off and only enabled later by the usecase when there
+-	 * is such a requirement.
+-	 */
+-	cam_soc_util_power_domain_enable_default(soc_info);
+-	cam_soc_util_power_domain_disable_default(soc_info);
++	if (!of_property_read_bool(soc_info->dev->of_node,
++		"qcom,skip-probe-power-domain-cycle")) {
++		/*
++		 * Doing a pm_runtime_get_sync() and pm_runtime_put_sync()
++		 * after pm_runtime_enable makes sure that the GDSC is off
++		 * and only enabled later by the usecase when required.
++		 */
++		cam_soc_util_power_domain_enable_default(soc_info);
++		cam_soc_util_power_domain_disable_default(soc_info);
++	} else {
++		CAM_DBG(CAM_UTIL,
++			"Skip probe power-domain cycle for %s",
++			soc_info->dev_name);
++	}
+ 
+ 	if (soc_info->irq_num > 0) {
+ 		rc = devm_request_irq(soc_info->dev, soc_info->irq_num,
+@@ -2094,9 +2101,10 @@ int cam_soc_util_disable_platform_resource(struct cam_hw_soc_info *soc_info,
+ 	cam_soc_util_regulator_disable_default(soc_info);
+ 
+ 	if (soc_info->pinctrl_info.pinctrl &&
+-		soc_info->pinctrl_info.gpio_state_suspend)
++		soc_info->pinctrl_info.gpio_state_suspend) {
+ 		rc = pinctrl_select_state(soc_info->pinctrl_info.pinctrl,
+ 			soc_info->pinctrl_info.gpio_state_suspend);
++	}
+ 
+ 	return rc;
+ }

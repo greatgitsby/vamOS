@@ -1,0 +1,108 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Trey Moen <trey@moen.ai>
+Date: Thu, 2 Jul 2026 18:34:43 -0700
+Subject: [PATCH] cam: cci: match AGNOS 4.9 read-completion and freq-refcount
+ handling
+
+cam_cci_core.c changes to match the working legacy sdm845 CCI flow:
+ - wait on reset_complete (not rd_done) for read completion, and reinit
+   it alongside rd_done, so a read that races the master reset is not
+   lost;
+ - serialise cam_cci_set_clk_param with the master mutex + master_sem and
+   bump freq_ref_cnt under freq_cnt_lock, balancing the release path.
+---
+ .../cam_sensor_module/cam_cci/cam_cci_core.c  | 38 +++++++++++++++++--
+ 1 file changed, 35 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_core.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_core.c
+index de0f3d0..befcd12 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_core.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_core.c
+@@ -628,6 +628,21 @@ static int32_t cam_cci_set_clk_param(struct cci_device *cci_dev,
+ 	struct cam_hw_soc_info *soc_info =
+ 		&cci_dev->soc_info;
+ 	void __iomem *base = soc_info->reg_map[0].mem_base;
++	struct cam_cci_master_info *cci_master =
++		&cci_dev->cci_master_info[master];
++	uint16_t ref_before = 0;
++	uint16_t ref_after = 0;
++	bool same_freq = false;
++	uint32_t scl_ctl_addr = (master == MASTER_0) ?
++		CCI_I2C_M0_SCL_CTL_ADDR : CCI_I2C_M1_SCL_CTL_ADDR;
++	uint32_t sda_ctl_0_addr = (master == MASTER_0) ?
++		CCI_I2C_M0_SDA_CTL_0_ADDR : CCI_I2C_M1_SDA_CTL_0_ADDR;
++	uint32_t sda_ctl_1_addr = (master == MASTER_0) ?
++		CCI_I2C_M0_SDA_CTL_1_ADDR : CCI_I2C_M1_SDA_CTL_1_ADDR;
++	uint32_t sda_ctl_2_addr = (master == MASTER_0) ?
++		CCI_I2C_M0_SDA_CTL_2_ADDR : CCI_I2C_M1_SDA_CTL_2_ADDR;
++	uint32_t misc_ctl_addr = (master == MASTER_0) ?
++		CCI_I2C_M0_MISC_CTL_ADDR : CCI_I2C_M1_MISC_CTL_ADDR;
+ 
+ 	if ((i2c_freq_mode >= I2C_MAX_MODES) || (i2c_freq_mode < 0)) {
+ 		CAM_ERR(CAM_CCI, "invalid i2c_freq_mode = %d", i2c_freq_mode);
+@@ -636,8 +651,21 @@ static int32_t cam_cci_set_clk_param(struct cci_device *cci_dev,
+ 
+ 	clk_params = &cci_dev->cci_clk_params[i2c_freq_mode];
+ 
+-	if (cci_dev->i2c_freq_mode[master] == i2c_freq_mode)
++	mutex_lock(&cci_master->mutex);
++	same_freq = cci_dev->i2c_freq_mode[master] == i2c_freq_mode;
++	down(&cci_master->master_sem);
++
++	spin_lock(&cci_master->freq_cnt_lock);
++	ref_before = cci_master->freq_ref_cnt;
++	cci_master->freq_ref_cnt++;
++	ref_after = cci_master->freq_ref_cnt;
++	spin_unlock(&cci_master->freq_cnt_lock);
++
++	if (same_freq) {
++		mutex_unlock(&cci_master->mutex);
+ 		return 0;
++	}
++
+ 	if (master == MASTER_0) {
+ 		cam_io_w_mb(clk_params->hw_thigh << 16 |
+ 			clk_params->hw_tlow,
+@@ -671,6 +699,8 @@ static int32_t cam_cci_set_clk_param(struct cci_device *cci_dev,
+ 	}
+ 	cci_dev->i2c_freq_mode[master] = i2c_freq_mode;
+ 
++
++	mutex_unlock(&cci_master->mutex);
+ 	return 0;
+ }
+ 
+@@ -1179,7 +1209,7 @@ static int32_t cam_cci_burst_read(struct v4l2_subdev *sd,
+ 		    * RD_DONE exclusively.
+ 		    */
+ 			rem_jiffies = wait_for_completion_timeout(
+-			&cci_dev->cci_master_info[master].rd_done,
++			&cci_dev->cci_master_info[master].reset_complete,
+ 			CCI_TIMEOUT);
+ 			if (!rem_jiffies) {
+ 				rc = -ETIMEDOUT;
+@@ -1361,7 +1391,7 @@ static int32_t cam_cci_read(struct v4l2_subdev *sd,
+ 		((read_cfg->num_byte / 4) + 1));
+ 
+ 	if (!wait_for_completion_timeout(
+-		&cci_dev->cci_master_info[master].rd_done, CCI_TIMEOUT)) {
++		&cci_dev->cci_master_info[master].reset_complete, CCI_TIMEOUT)) {
+ 		cam_cci_dump_registers(cci_dev, master, queue);
+ 
+ 		rc = -ETIMEDOUT;
+@@ -1629,6 +1659,7 @@ static int32_t cam_cci_read_bytes_v_1_2(struct v4l2_subdev *sd,
+ 	}
+ 
+ 	reinit_completion(&cci_dev->cci_master_info[master].rd_done);
++	reinit_completion(&cci_dev->cci_master_info[master].reset_complete);
+ 	read_bytes = read_cfg->num_byte;
+ 	CAM_DBG(CAM_CCI, "Bytes to read %u", read_bytes);
+ 	do {
+@@ -1707,6 +1738,7 @@ static int32_t cam_cci_read_bytes(struct v4l2_subdev *sd,
+ 	 */
+ 	mutex_lock(&cci_dev->cci_master_info[master].mutex_q[QUEUE_1]);
+ 	reinit_completion(&cci_dev->cci_master_info[master].rd_done);
++	reinit_completion(&cci_dev->cci_master_info[master].reset_complete);
+ 	reinit_completion(&cci_dev->cci_master_info[master].th_complete);
+ 	mutex_unlock(&cci_dev->cci_master_info[master].mutex_q[QUEUE_1]);
+ 

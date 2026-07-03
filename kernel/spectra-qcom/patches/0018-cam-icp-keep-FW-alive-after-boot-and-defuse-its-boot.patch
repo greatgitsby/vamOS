@@ -1,0 +1,97 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Trey Moen <trey@moen.ai>
+Date: Thu, 2 Jul 2026 18:37:50 -0700
+Subject: [PATCH] cam: icp: keep FW alive after boot and defuse its boot
+ watchdog on every resume
+
+The sdm845 ICP FW (CICP.FW.1.0-00050) dies with SYS_ERROR SFR "ICP SS WD
+Timeout" ~0.7 s after every boot unless the host sends HFI traffic after
+SYS_INIT: HFI messages defuse a boot watchdog the FW arms on each boot.
+Legacy 4.9 is immune because its camerad flow talks to the FW immediately.
+
+Keep the FW running after the boot-time download (skip the power collapse)
+and factor the two benign NULL-user_data pings into
+cam_icp_mgr_defuse_boot_wd(). Call it from BOTH the boot download path and
+cam_icp_mgr_icp_resume() after hfi_resume: a resume that re-inits the FW
+(last-context release then re-acquire) re-boots it and re-arms the boot
+watchdog, so the second camerad session died with the same timeout until
+the pings were sent on resume too. The already-powered early-return skips
+the (unneeded) defuse.
+---
+ .../icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c        | 42 ++++++++++++++++++-
+ 1 file changed, 40 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c
+index ed38387..2b3920e 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c
+@@ -3753,6 +3753,25 @@ static int cam_icp_mgr_hw_open_k(void *hw_mgr_priv, void *download_fw_args)
+ 	return cam_icp_mgr_hw_open(hw_mgr, download_fw_args);
+ }
+ 
++/*
++ * Defuse the sdm845 ICP FW boot watchdog. The FW (CICP.FW.1.0-00050) arms
++ * a subsystem watchdog every time it boots that survives a power collapse
++ * and kills the next instance ~0.7 s later ("SFR: ICP SS WD Timeout")
++ * unless the host sends HFI traffic after SYS_INIT. Two benign pings
++ * (NULL user_data is tolerated by the ack handler) inside the window
++ * arm the FW's own WD servicing. This must run after EVERY boot/resume of
++ * the FW, not just the first download - a resume that re-inits the FW
++ * (last-context release then re-acquire) re-arms the boot watchdog.
++ */
++static void cam_icp_mgr_defuse_boot_wd(struct cam_icp_hw_mgr *hw_mgr)
++{
++	msleep(250);
++	hfi_send_system_cmd(HFI_CMD_SYS_PING, 0, 0);
++	msleep(250);
++	hfi_send_system_cmd(HFI_CMD_SYS_PING, 0, 0);
++	CAM_INFO(CAM_ICP, "ICP FW boot watchdog defused");
++}
++
+ static int cam_icp_mgr_icp_resume(struct cam_icp_hw_mgr *hw_mgr)
+ {
+ 	int rc = 0;
+@@ -3773,6 +3792,12 @@ static int cam_icp_mgr_icp_resume(struct cam_icp_hw_mgr *hw_mgr)
+ 		return rc;
+ 	}
+ 
++	if (((struct cam_hw_info *)icp_dev_intf->hw_priv)->hw_state ==
++		CAM_HW_STATE_POWER_UP) {
++		CAM_DBG(CAM_ICP, "ICP already powered, skip resume");
++		return 0;
++	}
++
+ 	rc = icp_dev_intf->hw_ops.init(icp_dev_intf->hw_priv, NULL, 0);
+ 	if (rc)
+ 		return -EINVAL;
+@@ -3785,6 +3810,13 @@ static int cam_icp_mgr_icp_resume(struct cam_icp_hw_mgr *hw_mgr)
+ 	if (rc)
+ 		goto power_collapse;
+ 
++	/*
++	 * The FW just re-booted from a power collapse and re-armed its boot
++	 * watchdog; defuse it exactly as the boot-time download path does,
++	 * otherwise the second session dies with "ICP SS WD Timeout".
++	 */
++	cam_icp_mgr_defuse_boot_wd(hw_mgr);
++
+ 	CAM_DBG(CAM_ICP, "Exit");
+ 	return rc;
+ 
+@@ -3856,8 +3888,14 @@ static int cam_icp_mgr_hw_open(void *hw_mgr_priv, void *download_fw_args)
+ 		return rc;
+ 
+ 	rc = cam_ipe_bps_deint(hw_mgr);
+-	rc = cam_icp_mgr_icp_power_collapse(hw_mgr);
+-	CAM_DBG(CAM_ICP, "deinit all clocks at boot up");
++
++	/*
++	 * Do not power collapse the ICP after the boot-time download on
++	 * sdm845: the FW arms a boot watchdog that survives the collapsed
++	 * state and kills the next instance. Keep the FW running and defuse
++	 * the watchdog with the same ping sequence the resume path uses.
++	 */
++	cam_icp_mgr_defuse_boot_wd(hw_mgr);
+ 
+ 	return rc;
+ 

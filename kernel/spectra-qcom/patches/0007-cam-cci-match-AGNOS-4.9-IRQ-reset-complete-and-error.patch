@@ -1,0 +1,87 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Trey Moen <trey@moen.ai>
+Date: Thu, 2 Jul 2026 18:34:43 -0700
+Subject: [PATCH] cam: cci: match AGNOS 4.9 IRQ reset-complete and error-halt
+ path
+
+cam_cci_dev.c: signal reset_complete unconditionally on the reset IRQ and
+alongside every rd_done, and issue a HALT_REQ (not a full RESET) on the
+Q0Q1/RD error IRQ, matching the legacy error-recovery path.
+---
+ .../cam_sensor_module/cam_cci/cam_cci_dev.c        | 14 ++++++++------
+ 1 file changed, 8 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_dev.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_dev.c
+index 056d61c..277d0a2 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_dev.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_cci/cam_cci_dev.c
+@@ -143,8 +143,7 @@ irqreturn_t cam_cci_irq(int irq_num, void *data)
+ 			cci_master_info = &cci_dev->cci_master_info[MASTER_0];
+ 			cci_dev->cci_master_info[MASTER_0].reset_pending =
+ 				false;
+-			if (!cci_master_info->status)
+-				complete(&cci_master_info->reset_complete);
++			complete(&cci_master_info->reset_complete);
+ 
+ 			complete_all(&cci_master_info->rd_done);
+ 			complete_all(&cci_master_info->th_complete);
+@@ -153,8 +152,7 @@ irqreturn_t cam_cci_irq(int irq_num, void *data)
+ 			cci_master_info = &cci_dev->cci_master_info[MASTER_1];
+ 			cci_dev->cci_master_info[MASTER_1].reset_pending =
+ 				false;
+-			if (!cci_master_info->status)
+-				complete(&cci_master_info->reset_complete);
++			complete(&cci_master_info->reset_complete);
+ 
+ 			complete_all(&cci_master_info->rd_done);
+ 			complete_all(&cci_master_info->th_complete);
+@@ -167,6 +165,7 @@ irqreturn_t cam_cci_irq(int irq_num, void *data)
+ 		rd_done_th_assert = true;
+ 		complete(&cci_dev->cci_master_info[MASTER_0].th_complete);
+ 		complete(&cci_dev->cci_master_info[MASTER_0].rd_done);
++		complete(&cci_dev->cci_master_info[MASTER_0].reset_complete);
+ 	}
+ 	if ((irq_status0 & CCI_IRQ_STATUS_0_I2C_M0_RD_DONE_BMSK) &&
+ 		(!rd_done_th_assert)) {
+@@ -176,6 +175,7 @@ irqreturn_t cam_cci_irq(int irq_num, void *data)
+ 			complete(
+ 			&cci_dev->cci_master_info[MASTER_0].th_complete);
+ 		complete(&cci_dev->cci_master_info[MASTER_0].rd_done);
++		complete(&cci_dev->cci_master_info[MASTER_0].reset_complete);
+ 	}
+ 	if ((irq_status1 & CCI_IRQ_STATUS_1_I2C_M0_RD_THRESHOLD) &&
+ 		(!rd_done_th_assert)) {
+@@ -223,6 +223,7 @@ irqreturn_t cam_cci_irq(int irq_num, void *data)
+ 		rd_done_th_assert = true;
+ 		complete(&cci_dev->cci_master_info[MASTER_1].th_complete);
+ 		complete(&cci_dev->cci_master_info[MASTER_1].rd_done);
++		complete(&cci_dev->cci_master_info[MASTER_1].reset_complete);
+ 	}
+ 	if ((irq_status0 & CCI_IRQ_STATUS_0_I2C_M1_RD_DONE_BMSK) &&
+ 		(!rd_done_th_assert)) {
+@@ -232,6 +233,7 @@ irqreturn_t cam_cci_irq(int irq_num, void *data)
+ 			complete(
+ 			&cci_dev->cci_master_info[MASTER_1].th_complete);
+ 		complete(&cci_dev->cci_master_info[MASTER_1].rd_done);
++		complete(&cci_dev->cci_master_info[MASTER_1].reset_complete);
+ 	}
+ 	if ((irq_status1 & CCI_IRQ_STATUS_1_I2C_M1_RD_THRESHOLD) &&
+ 		(!rd_done_th_assert)) {
+@@ -318,7 +320,7 @@ irqreturn_t cam_cci_irq(int irq_num, void *data)
+ 				base, irq_status0);
+ 
+ 		cci_dev->cci_master_info[MASTER_0].reset_pending = true;
+-		cam_io_w_mb(CCI_M0_RESET_RMSK, base + CCI_RESET_CMD_ADDR);
++		cam_io_w_mb(CCI_M0_HALT_REQ_RMSK, base + CCI_HALT_REQ_ADDR);
+ 	}
+ 	if (irq_status0 & CCI_IRQ_STATUS_0_I2C_M1_ERROR_BMSK) {
+ 		cci_dev->cci_master_info[MASTER_1].status = -EINVAL;
+@@ -350,7 +352,7 @@ irqreturn_t cam_cci_irq(int irq_num, void *data)
+ 				base, cci_dev->soc_info.index, irq_status0);
+ 
+ 		cci_dev->cci_master_info[MASTER_1].reset_pending = true;
+-		cam_io_w_mb(CCI_M1_RESET_RMSK, base + CCI_RESET_CMD_ADDR);
++		cam_io_w_mb(CCI_M1_HALT_REQ_RMSK, base + CCI_HALT_REQ_ADDR);
+ 	}
+ 
+ 	return IRQ_HANDLED;

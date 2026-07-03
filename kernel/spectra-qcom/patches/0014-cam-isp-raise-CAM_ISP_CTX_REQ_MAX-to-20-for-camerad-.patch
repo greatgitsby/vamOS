@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Trey Moen <trey@moen.ai>
+Date: Thu, 2 Jul 2026 18:35:41 -0700
+Subject: [PATCH] cam: isp: raise CAM_ISP_CTX_REQ_MAX to 20 for camerad queue
+ depth
+
+camerad keeps VIPC_BUFFER_COUNT (18) requests in flight; the ISP ctx
+request pool was 8, so the 10th CONFIG_DEV returned ENOMEM. Raise to 20
+(the generic CAM_CTX_REQ_MAX is already 20).
+---
+ .../msm/camera/camera_kt/drivers/cam_isp/cam_isp_context.h      | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/cam_isp_context.h b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/cam_isp_context.h
+index f885920..dc97523 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/cam_isp_context.h
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/cam_isp_context.h
+@@ -27,7 +27,7 @@
+ #define CAM_ISP_CTX_RES_MAX                     24
+ 
+ /* max requests per ctx for isp */
+-#define CAM_ISP_CTX_REQ_MAX                     8
++#define CAM_ISP_CTX_REQ_MAX                     20
+ 
+ /*
+  * Maximum entries in state monitoring array for error logging

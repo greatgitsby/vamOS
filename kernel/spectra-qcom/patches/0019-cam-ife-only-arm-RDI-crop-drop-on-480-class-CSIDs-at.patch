@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Trey Moen <trey@moen.ai>
+Date: Thu, 2 Jul 2026 18:38:56 -0700
+Subject: [PATCH] cam: ife: only arm RDI crop/drop on 480-class CSIDs at
+ acquire
+
+cam_ife_hw_mgr_acquire_res_ife_csid_rdi() set csid_acquire.crop_enable =
+drop_enable = true unconditionally, under a comment saying only ver 480
+HW consumes it - but nothing enforced that. The CSID format lookup takes
+crop||drop as "rpp"; on a MIPI RAW N -> RAW N RDI that flips the decode
+from payload passthrough (0xf, packed) to plain16 unpacking (0x3). On
+Titan 170 (sdm845) the RDI then writes 16-bpp rows into a buffer
+userspace sized for packed RAW12: the write overflows (CAMNOC SLAVE_IRQ /
+SMMU faults) and the BPS reads misaligned bayer (frame repeated 3x with a
+dead bottom band).
+
+Fix it at the source: gate the crop/drop assignments on the CPAS hw
+version so only the 480-class CSIDs that implement RDI pixel processing
+arm them; older CSIDs keep the packed passthrough, matching legacy 4.9.
+This replaces the earlier in==out heuristic guard in the CSID core.
+---
+ .../cam_isp/isp_hw_mgr/cam_ife_hw_mgr.c       | 21 +++++++++++++++----
+ 1 file changed, 17 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/cam_ife_hw_mgr.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/cam_ife_hw_mgr.c
+index 11d73ea..c0b1995 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/cam_ife_hw_mgr.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/cam_ife_hw_mgr.c
+@@ -2303,6 +2303,7 @@ static int cam_ife_hw_mgr_acquire_res_ife_csid_rdi(
+ 	struct cam_csid_hw_reserve_resource_args  csid_acquire;
+ 	enum cam_ife_pix_path_res_id         path_res_id;
+ 	enum cam_ife_pix_path_res_id         org_path_res_id;
++	uint32_t                             csid_hw_version = 0;
+ 
+ 	ife_hw_mgr = ife_ctx->hw_mgr;
+ 
+@@ -2342,11 +2343,23 @@ static int cam_ife_hw_mgr_acquire_res_ife_csid_rdi(
+ 		csid_acquire.priv = ife_ctx;
+ 
+ 		/*
+-		 * Enable RDI pixel drop by default. CSID will enable only for
+-		 * ver 480 HW to allow userspace to control pixel drop pattern.
++		 * RDI pixel processing (crop/drop -> "rpp") is only implemented
++		 * by the ver 480 class CSIDs. Enabling it on an older CSID
++		 * (e.g. Titan 170 / sdm845) switches a MIPI RAW passthrough
++		 * (decode fmt 0xf, packed) to plain16 unpacking (0x3): the RDI
++		 * then writes 16-bit-per-pixel rows into a buffer userspace
++		 * sized for packed data, overflowing it (CAMNOC/SMMU faults) and
++		 * feeding the BPS misaligned bayer. Only arm crop/drop on the
++		 * 480-class HW that actually supports it; older CSIDs keep the
++		 * packed payload passthrough, as legacy 4.9 does.
+ 		 */
+-		csid_acquire.drop_enable = true;
+-		csid_acquire.crop_enable = true;
++		if (cam_cpas_get_cpas_hw_version(&csid_hw_version))
++			csid_hw_version = 0;
++		if ((csid_hw_version == CAM_CPAS_TITAN_480_V100) ||
++			(csid_hw_version == CAM_CPAS_TITAN_175_V130)) {
++			csid_acquire.drop_enable = true;
++			csid_acquire.crop_enable = true;
++		}
+ 
+ 		if (in_port->usage_type)
+ 			csid_acquire.sync_mode = CAM_ISP_HW_SYNC_MASTER;

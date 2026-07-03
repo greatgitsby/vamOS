@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Trey Moen <trey@moen.ai>
+Date: Thu, 2 Jul 2026 18:35:06 -0700
+Subject: [PATCH] cam: sensor: do not request/free the CAMIF_MCLK GPIO
+
+The MCLK pad is owned by the clock controller on sdm845; requesting it
+as a plain GPIO fights the pinctrl/clk path. Skip the CAMIF_MCLK entry
+in the sensor gpio request/free table, matching legacy 4.9.
+---
+ .../cam_sensor_utils/cam_sensor_util.c             | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_utils/cam_sensor_util.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_utils/cam_sensor_util.c
+index c48b59d..51135ec 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_utils/cam_sensor_util.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_sensor_utils/cam_sensor_util.c
+@@ -17,6 +17,12 @@
+ #define CAM_SENSOR_PINCTRL_STATE_SLEEP "cam_suspend"
+ #define CAM_SENSOR_PINCTRL_STATE_DEFAULT "cam_default"
+ 
++static bool cam_sensor_gpio_label_is_mclk(const cam_gpio *gpio)
++{
++	return gpio && gpio->label &&
++		!strncmp(gpio->label, "CAMIF_MCLK", sizeof("CAMIF_MCLK") - 1);
++}
++
+ #define VALIDATE_VOLTAGE(min, max, config_val) ((config_val) && \
+ 	(config_val >= min) && (config_val <= max))
+ 
+@@ -1237,6 +1243,8 @@ int cam_sensor_util_request_gpio_table(
+ 
+ 	if (gpio_en) {
+ 		for (i = 0; i < size; i++) {
++			if (cam_sensor_gpio_label_is_mclk(&gpio_tbl[i]))
++				continue;
+ 			rc = cam_res_mgr_gpio_request(soc_info->dev,
+ 					gpio_tbl[i].gpio,
+ 					gpio_tbl[i].flags, gpio_tbl[i].label);
+@@ -1251,7 +1259,11 @@ int cam_sensor_util_request_gpio_table(
+ 			}
+ 		}
+ 	} else {
+-		cam_res_mgr_gpio_free_arry(soc_info->dev, gpio_tbl, size);
++		for (i = 0; i < size; i++) {
++			if (cam_sensor_gpio_label_is_mclk(&gpio_tbl[i]))
++				continue;
++			cam_res_mgr_gpio_free_arry(soc_info->dev, &gpio_tbl[i], 1);
++		}
+ 	}
+ 
+ 	return rc;

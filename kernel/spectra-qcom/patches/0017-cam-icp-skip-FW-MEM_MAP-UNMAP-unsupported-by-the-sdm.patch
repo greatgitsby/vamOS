@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Trey Moen <trey@moen.ai>
+Date: Thu, 2 Jul 2026 18:37:50 -0700
+Subject: [PATCH] cam: icp: skip FW MEM_MAP/UNMAP unsupported by the sdm845
+ firmware
+
+The 2018 CICP.FW.1.0-00050 rejects HFI_IPEBPS_CMD_OPCODE_MEM_MAP (opcode
+0x0e; the FW debug queue logs "Unrecognized opcode 0x0e"); legacy 4.9
+never sends it and does io-config via the CONFIG_IO async command this FW
+handles. Make cam_icp_process_stream_settings a no-op.
+---
+ .../cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c     | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c
+index 8c98e0d..ed38387 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_icp/icp_hw/icp_hw_mgr/cam_icp_hw_mgr.c
+@@ -4377,6 +4377,20 @@ static int cam_icp_process_stream_settings(
+ 	struct hfi_cmd_ipe_bps_map  *map_cmd;
+ 	struct hfi_cmd_ipebps_async *async_direct;
+ 
++	/*
++	 * The sdm845-era ICP firmware (CICP.FW.1.0-00050) predates the
++	 * HFI_IPEBPS_CMD_OPCODE_MEM_MAP/UNMAP opcodes (0xe/0xf) and rejects
++	 * them ("Unrecognized opcode 0x0000000e"), never responding - the
++	 * 5 s wait then fails the whole acquire. The io-config regions are
++	 * delivered via the CONFIG_IO async command instead, as on the
++	 * legacy 4.9 driver which never sends MEM_MAP. Skip it.
++	 */
++	if (map_unmap)
++		CAM_DBG(CAM_ICP, "skipping FW MEM_MAP (unsupported by FW)");
++	else
++		CAM_DBG(CAM_ICP, "skipping FW MEM_UNMAP (unsupported by FW)");
++	return 0;
++
+ 	map_cmd_size =
+ 		sizeof(struct hfi_cmd_ipe_bps_map) +
+ 		((cmd_mem_regions->num_regions - 1) *

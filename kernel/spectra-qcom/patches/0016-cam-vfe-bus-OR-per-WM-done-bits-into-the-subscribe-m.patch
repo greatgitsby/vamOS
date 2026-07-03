@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Trey Moen <trey@moen.ai>
+Date: Thu, 2 Jul 2026 18:35:41 -0700
+Subject: [PATCH] cam: vfe bus: OR per-WM done bits into the subscribe mask
+
+cam_vfe_bus_start_wm assigned its done bit into bus_irq_reg_mask[REG1]
+instead of OR-ing, so on ports without a composite group (the FULL port
+on vfe170 is Y+UV with no comp group) the Y-done bit was overwritten and
+buf_done never fired. OR the bit in.
+---
+ .../cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe_bus/cam_vfe_bus_ver2.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe_bus/cam_vfe_bus_ver2.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe_bus/cam_vfe_bus_ver2.c
+index 71bccfa..ee8e9d3 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe_bus/cam_vfe_bus_ver2.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe_bus/cam_vfe_bus_ver2.c
+@@ -1446,7 +1446,7 @@ static int cam_vfe_bus_start_wm(
+ 		cam_io_w_mb(rsrc_data->stride, (common_data->mem_base +
+ 			rsrc_data->hw_regs->stride));
+ 
+-	bus_irq_reg_mask[CAM_VFE_BUS_IRQ_REG1] = (1 << rsrc_data->index);
++	bus_irq_reg_mask[CAM_VFE_BUS_IRQ_REG1] |= (1 << rsrc_data->index);
+ 
+ 	/* enable ubwc if needed*/
+ 	if (rsrc_data->en_ubwc) {

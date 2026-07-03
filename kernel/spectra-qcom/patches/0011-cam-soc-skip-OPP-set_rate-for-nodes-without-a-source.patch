@@ -1,0 +1,47 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Trey Moen <trey@moen.ai>
+Date: Thu, 2 Jul 2026 18:35:19 -0700
+Subject: [PATCH] cam: soc: skip OPP/set_rate for nodes without a source clock
+
+Some camera sub-nodes on sdm845 have no src clock (src_clk_idx < 0).
+Guard dev_pm_opp_set_rate() in cam_soc_util_clk_enable_default() and
+short-circuit cam_soc_util_configure_opp() for those nodes instead of
+indexing clk_name[-1].
+---
+ .../camera/camera_kt/drivers/cam_utils/cam_soc_util.c    | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_utils/cam_soc_util.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_utils/cam_soc_util.c
+index 704a5e1..bc3ffd8 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_utils/cam_soc_util.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_utils/cam_soc_util.c
+@@ -715,6 +715,7 @@ int cam_soc_util_clk_enable_default(struct cam_hw_soc_info *soc_info,
+ 	if (soc_info->cam_cx_ipeak_enable)
+ 		cam_cx_ipeak_update_vote_cx_ipeak(soc_info, apply_level);
+ 
++	if (soc_info->src_clk_idx >= 0) {
+ 	rc = dev_pm_opp_set_rate(soc_info->dev,
+ 			soc_info->clk_rate[apply_level][soc_info->src_clk_idx]);
+ 	if (rc) {
+@@ -724,6 +725,7 @@ int cam_soc_util_clk_enable_default(struct cam_hw_soc_info *soc_info,
+ 			rc);
+ 		return rc;
+ 	}
++	}
+ 
+ 
+ 	for (i = 0; i < soc_info->num_clk; i++) {
+@@ -1803,6 +1805,13 @@ int cam_soc_util_configure_opp(struct cam_hw_soc_info *soc_info)
+ {
+ 	int rc = 0;
+ 
++	if (soc_info->src_clk_idx < 0) {
++		CAM_DBG(CAM_UTIL,
++			"Dev %s has no src clock (src_clk_idx=%d); skipping OPP config",
++			soc_info->dev_name, soc_info->src_clk_idx);
++		return 0;
++	}
++
+ 	rc = devm_pm_opp_set_clkname(soc_info->dev, soc_info->clk_name[soc_info->src_clk_idx]);
+ 	if (rc) {
+ 		CAM_ERR(CAM_UTIL,

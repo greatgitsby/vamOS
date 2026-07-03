@@ -1,3 +1,13 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Trey Moen <trey@moen.ai>
+Date: Mon, 15 Jun 2026 12:00:00 +0000
+Subject: media: platform: add the msm camera (Spectra) build hook
+
+Add the Kconfig/Makefile hook under drivers/media/platform so the
+vendored Qualcomm Spectra camera_kt driver (installed into
+drivers/media/platform/msm/camera at build time) is wired into the
+kernel build.
+---
 diff --git a/drivers/media/platform/Kconfig b/drivers/media/platform/Kconfig
 index 9287faafdce5..a055631419c2 100644
 --- a/drivers/media/platform/Kconfig

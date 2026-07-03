@@ -1,5 +1,5 @@
 From f053f308d9b7d8c5dbab6604f5e37e88bfde8a44 Mon Sep 17 00:00:00 2001
-From: Trey <trey@comma.ai>
+From: Trey Moen <trey@moen.ai>
 Date: Sun, 14 Jun 2026 19:56:00 +0000
 Subject: clk: qcom: camcc-sdm845: use software control for IPE GDSCs
 

@@ -1,5 +1,5 @@
 From 3e6a5b0ab0d3b2e96068a46ee6dd7f5b4d1d18d7 Mon Sep 17 00:00:00 2001
-From: Trey <trey@comma.ai>
+From: Trey Moen <trey@moen.ai>
 Date: Sun, 14 Jun 2026 19:48:00 +0000
 Subject: clk: qcom: camcc-sdm845: use software control for BPS GDSC
 

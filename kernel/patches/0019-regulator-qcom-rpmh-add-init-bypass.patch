@@ -1,5 +1,5 @@
 From 1d1adf3b98d84bf16f739e8cbbafeb019bcd0015 Mon Sep 17 00:00:00 2001
-From: Trey <trey@comma.ai>
+From: Trey Moen <trey@moen.ai>
 Date: Mon, 15 Jun 2026 12:30:00 +0000
 Subject: regulator: qcom-rpmh: add init bypass hook for BOB bring-up
 

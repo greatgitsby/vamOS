@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Trey Moen <trey@moen.ai>
+Date: Thu, 2 Jul 2026 18:35:41 -0700
+Subject: [PATCH] cam: cpas: skip camnoc fill-level monitor reads on Titan 170
+ v1xx
+
+cam_cpas_update_monitor_array() reads camnoc fill-level debug registers
+at offsets that do not exist on sdm845 Titan 170 v110; the AXI read
+never completes and hangs the NoC and all CPUs. Guard the reads to the
+newer CAMNOC revisions, mirroring the existing 580-only fill-level
+guard.
+---
+ .../camera_kt/drivers/cam_cpas/cam_cpas_hw.c     | 16 ++++++++++------
+ 1 file changed, 10 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cpas/cam_cpas_hw.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cpas/cam_cpas_hw.c
+index def970b..c40bb8f 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cpas/cam_cpas_hw.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_cpas/cam_cpas_hw.c
+@@ -2047,12 +2047,16 @@ static void cam_cpas_update_monitor_array(struct cam_hw_info *cpas_hw,
+ 		entry->be_mnoc = cam_io_r_mb(rpmh_base + be_mnoc_offset);
+ 	}
+ 
+-	entry->camnoc_fill_level[0] = cam_io_r_mb(
+-		soc_info->reg_map[reg_camnoc].mem_base + 0xA20);
+-	entry->camnoc_fill_level[1] = cam_io_r_mb(
+-		soc_info->reg_map[reg_camnoc].mem_base + 0x1420);
+-	entry->camnoc_fill_level[2] = cam_io_r_mb(
+-		soc_info->reg_map[reg_camnoc].mem_base + 0x1A20);
++	if ((cpas_hw->soc_info.hw_version != CAM_CPAS_TITAN_170_V100) &&
++		(cpas_hw->soc_info.hw_version != CAM_CPAS_TITAN_170_V110) &&
++		(cpas_hw->soc_info.hw_version != CAM_CPAS_TITAN_170_V120)) {
++		entry->camnoc_fill_level[0] = cam_io_r_mb(
++			soc_info->reg_map[reg_camnoc].mem_base + 0xA20);
++		entry->camnoc_fill_level[1] = cam_io_r_mb(
++			soc_info->reg_map[reg_camnoc].mem_base + 0x1420);
++		entry->camnoc_fill_level[2] = cam_io_r_mb(
++			soc_info->reg_map[reg_camnoc].mem_base + 0x1A20);
++	}
+ 
+ 	if (cpas_hw->soc_info.hw_version == CAM_CPAS_TITAN_580_V100) {
+ 		entry->camnoc_fill_level[3] = cam_io_r_mb(
