@@ -867,8 +867,10 @@
 			rgltr-load-current = <0 80000 105000 0>;
 			gpio-no-mux = <0>;
 			pinctrl-names = "cam_default", "cam_suspend";
-			pinctrl-0 = <&cam_sensor_mclk1_active>;
-			pinctrl-1 = <&cam_sensor_mclk1_suspend>;
+			pinctrl-0 = <&cam_sensor_mclk1_active
+				     &cam_sensor_reset1_active>;
+			pinctrl-1 = <&cam_sensor_mclk1_suspend
+				     &cam_sensor_reset1_suspend>;
 			gpios = <&tlmm 14 0>,
 				<&tlmm 7 0>,
 				<&tlmm 8 0>;
