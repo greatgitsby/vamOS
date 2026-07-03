@@ -149,10 +149,11 @@ removal, `__u64` frame ids). That is the only openpilot delta allowed.
       `tmp/frames/midrun_road.png`) shows a clearly visible scene vs the
       near-black power-on default. Driver cam still excluded (M3 BPS wall).
       Reboot-cycle endurance not yet exercised.
-- [ ] **M5 — cleanup:** strip diagnostic patches (driver patches marked
-      "temporary"/"breadcrumbs", kernel patch 0016), keep the real fixes
-      (genpd on sensors, 0017 GDSC timing, 0018 MCLK hw_clk_ctrl), tizi
-      (OX03C10) bringup.
+- [x] **M5 — cleanup (DONE 2026-07-02):** diagnostic patches stripped and
+      the surviving fixes regenerated diagnostic-free + renumbered (spectra
+      19, kernel 24); F3/F4 reworked to the mechanism/source and verified
+      on device; F5 power changes; build-purge added. See the
+      merge-readiness fix pass log entry. Remaining: tizi (OX03C10) bringup.
 
 ## The blocker: OS04C10 I2C address NACK (M1)
 
@@ -822,7 +823,9 @@ create the msgq fork and push, or vendor the visionbuf change.**
    rejection (startup flush skipped; error-path needs INIT+START_DEV).
 7. tizi (OX03C10) untouched.
 8. Strip candidates on next pass: kernel 0020, spectra 0017-0036
-   diagnostics, 0038/0039.
+   diagnostics, 0038/0039. **DONE** — see the 2026-07-02 merge-readiness
+   fix pass entry at the end of this log; the diagnostic patches and the
+   kernel breadcrumbs/TBU patches are removed and the series renumbered.
 
 ### 2026-07-02 — M3 hunt round 2: QDSS clock theory eliminated; parked with full evidence
 
@@ -1040,3 +1043,102 @@ UAPI struct layouts (byte-identical), KMD frame-process/CONFIG_IO paths
 (pre-fix) crashed and wedged the ICP (CPAS "client is in start state",
 then icp_fd assert on every later run until reboot). Restore it when
 the userspace is meant to run at boot.
+
+### 2026-07-02 — merge-readiness fix pass: diagnostics stripped, patch series final
+
+The NACK-era diagnostic patches are now actually gone (this supersedes the
+partial 2026-07-02 "M5 cleanup" entry above, which stripped the runtime
+prints but left the diagnostic *patches* — breadcrumbs, TLMM/pad dumps,
+SDA/SCL bitbang, powered-probe holds — plus the two neutering layers that
+only existed to disable them). The surviving functional fixes were
+regenerated diagnostic-free from a clean base tree and renumbered.
+
+**Final patch inventory.**
+
+Kernel patches (`kernel/patches/`, 24): 0001 dts hook, 0002 ath10k quirk,
+0003/0006 panels, 0004/0005 dispcc, 0007-0009 touch (0008/0009 now have
+proper headers), 0010 spidev, 0011 wifi MAC, 0012 squashfs discard,
+0013-0015 modem/rmtfs, 0016 msm camera hook (headered), 0017/0018 camcc
+GDSC sw-control, 0019 rpmh regulator init-bypass, 0020 camcc titan_top
+GDSC wait timing, 0021 camcc MCLK hw_clk_ctrl, 0022 UFS hibern8
+recalibrate, 0023 UFS caps (clock gating + scaling OFF; AGGR_POWER_COLLAPSE
++ RPM_AUTOSUSPEND restored — never-evidenced, F5), 0024 camcc camera GDSC
+wait timing. **Dropped:** the camera-rail breadcrumbs (pinctrl/regulator
+core) and the mmnoc TBU always-on (kept-didn't-fix; pinned three domains
+on forever). All Trey-authored patches now carry `From: Trey Moen
+<trey@moen.ai>`.
+
+Spectra patches (`kernel/spectra-qcom/patches/`, 19), all
+`From: Trey Moen <trey@moen.ai>`:
+  0001 kbuild/Kconfig integration
+  0002 smmu: don't put the secure-heap dmabuf
+  0003 mem: cmm allocator + dma-heap import (no ION)
+  0004 soc: skip the probe-time power-domain cycle (DT-gated)
+  0005 cci: AGNOS 4.9 read-completion + freq-refcount
+  0006 cci: AGNOS 4.9 master-init + RD-threshold order
+  0007 cci: AGNOS 4.9 IRQ reset-complete + error-halt
+  0008 sensor: skip the CAMIF_MCLK GPIO request/free
+  0009 sensor: enable the power domain at the MCLK step
+  0010 soc: skip the CCI_I2C GPIO request/free
+  0011 soc: skip OPP/set_rate for nodes without a src clock
+  0012 cpas: skip camnoc fill-level monitor reads on Titan 170 v1xx
+  0013 cdm: clean the genirq buffer cache before the BL commit
+  0014 isp: CAM_ISP_CTX_REQ_MAX 8->20
+  0015 vfe170: camif subscribe_irq_mask (SOF freeze)
+  0016 vfe bus: OR per-WM done bits (buf_done)
+  0017 icp: skip FW MEM_MAP/UNMAP unsupported by the 2018 FW
+  0018 icp: keep FW alive + defuse the boot watchdog on EVERY resume (F3)
+  0019 ife: only arm RDI crop/drop on 480-class CSIDs at acquire (F4)
+
+The CCI legacy-compat micro-fixes (old 0006/0011/0013/0014/0015) are
+consolidated one-patch-per-source-file (cci_core / cci_soc / cci_dev);
+same net behaviour.
+
+**F3 (second-session ICP death) — fixed and verified on device.** The
+boot-watchdog defuse (two NULL-user_data pings) is factored into
+`cam_icp_mgr_defuse_boot_wd()` and called from `cam_icp_mgr_icp_resume()`
+after `hfi_resume`, not just the boot download path: a resume that
+re-inits the FW (last-context release -> re-acquire) re-arms the boot
+watchdog, so the second camerad session used to die with "ICP SS WD
+Timeout". Verified: back-to-back driver-cam camerad sessions on kernel
+`6.18.0-vamos-10e893f`; session 2 logs
+`cam_icp_mgr_defuse_boot_wd: ICP FW boot watchdog defused` and streams
+driver-cam frames (cam2 processFrame OK) with no WD timeout / SYS_ERROR /
+FW-download-failed.
+
+**F4 (RDI crop/drop) — moved to the source, verified clean.** Gated
+`csid_acquire.crop_enable/drop_enable` on the 480-class CPAS hw version at
+the acquire site (`cam_ife_hw_mgr_acquire_res_ife_csid_rdi`); dropped the
+old CSID-core in==out heuristic. Net effect on sdm845 (Titan 170 V110) is
+identical to the old fix (crop/drop off -> packed RDI passthrough). Road
+and driver camerad runs streamed clean (frames processed, no CAMNOC
+SLAVE_IRQ / SMMU faults).
+
+**F5 (power scope) — done.** Reverted the mmnoc TBU always-on patch and
+restored the two never-evidenced UFS caps (kept gating+scaling off). Three
+consecutive clean boots on the new kernel, no UFS storm blocking boot. The
+residual idle `ufs_qcom_check_hibern8: TX_FSM_STATE err -110` message still
+appears late in a long run (patch 0022 territory, idle hibern8) but does
+not wedge and is unrelated to the caps change.
+
+**L8 prune hazard (guard).** `&vreg_l8a_1p2 { regulator-always-on; }` in
+`sdm845-comma-mici.dts` is intentionally modelled as a bare always-on
+regulator for legacy parity — it feeds the camera sensor power chain and
+has NO DT-visible consumer. It MUST NOT be pruned as "unused"; removing it
+reintroduces the entire OS04C10 NACK (see M1).
+
+**Build purge (F2).** `clean_spectra_qcom_install()` in
+`tools/build/build_kernel.sh` now unconditionally `rm -rf`s
+`kernel/linux/out/drivers/media/platform/msm/camera` so a removed patch's
+source file (reverted to an old mtime by `cp -a`) can no longer keep a
+stale object. The duplicated apply-patches loop is factored into
+`apply_patch_dir`. Verified: clean rebuild from the renumbered series
+applies all patches and builds `boot.img`.
+
+**Known issues unchanged**, notably #6: the runtime CRM flush-recovery
+path still hits the camera_kt FLUSHED-state rejection — a sync-obj timeout
+during a long run triggers CRM recovery -> flush -> FLUSHED, and the next
+`CAM_CONFIG_DEV` is rejected ("update req N in wrong state:4" -> config_ife
+EINVAL assert in snapshot_standalone). This is pre-existing (not from this
+pass) and still needs the proper INIT+START_DEV resume sequence or a
+kernel-side relaxation.
