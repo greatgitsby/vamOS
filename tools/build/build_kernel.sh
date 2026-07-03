@@ -129,22 +129,36 @@ apply_patches() {
   echo "-- Resetting kernel submodule to clean state --"
   clean_kernel_tree
 
-  if [ -d "$PATCHES_DIR" ] && ls "$PATCHES_DIR"/*.patch 1>/dev/null 2>&1; then
-    echo "-- Applying patches --"
-    for patch in "$PATCHES_DIR"/*.patch; do
-      echo "Applying $(basename "$patch")"
-      git apply --check --whitespace=error "$patch"
-      git apply --whitespace=error "$patch"
-    done
-  fi
+  echo "-- Applying patches --"
+  apply_patch_dir "$PATCHES_DIR"
 }
 
 clean_spectra_qcom_install() {
   rm -rf "$SPECTRA_QCOM_DRIVER_DST"
 
+  # Purge the persistent kbuild objects for the camera driver. The install
+  # step copies sources with cp -a (old mtimes); when a patch is removed a
+  # source file reverts to an older mtime and make keeps the stale object,
+  # so dropped-patch code can survive into the image. Objects rebuild in ~1
+  # min, so purge unconditionally.
+  rm -rf "$KERNEL_DIR/out/drivers/media/platform/msm/camera"
+
   if [ -d "$SPECTRA_QCOM_UAPI_DST" ]; then
     rm -f "$SPECTRA_QCOM_UAPI_DST"/cam_*.h
     rmdir "$SPECTRA_QCOM_UAPI_DST" 2>/dev/null || true
+  fi
+}
+
+# Apply every *.patch in a directory to the kernel tree (check then apply).
+apply_patch_dir() {
+  local patch_dir="$1"
+  local patch
+  if [ -d "$patch_dir" ] && ls "$patch_dir"/*.patch 1>/dev/null 2>&1; then
+    for patch in "$patch_dir"/*.patch; do
+      echo "Applying $(basename "$patch")"
+      git -C "$KERNEL_DIR" apply --check --whitespace=error "$patch"
+      git -C "$KERNEL_DIR" apply --whitespace=error "$patch"
+    done
   fi
 }
 
@@ -175,14 +189,8 @@ install_spectra_qcom() {
     echo '#define CAMERA_CC_VERSION "kernel-tree"'
   } > "$SPECTRA_QCOM_DRIVER_DST/cam_generated_h"
 
-  if [ -d "$SPECTRA_QCOM_PATCHES_DIR" ] && ls "$SPECTRA_QCOM_PATCHES_DIR"/*.patch 1>/dev/null 2>&1; then
-    echo "-- Applying Qualcomm Spectra local patches --"
-    for patch in "$SPECTRA_QCOM_PATCHES_DIR"/*.patch; do
-      echo "Applying $(basename "$patch")"
-      git -C "$KERNEL_DIR" apply --check --whitespace=error "$patch"
-      git -C "$KERNEL_DIR" apply --whitespace=error "$patch"
-    done
-  fi
+  echo "-- Applying Qualcomm Spectra local patches --"
+  apply_patch_dir "$SPECTRA_QCOM_PATCHES_DIR"
 }
 
 build_kernel() {
@@ -360,6 +368,7 @@ DTS_FILES=(
 git -C / config --global --add safe.directory '$DIR'
 git -C / config --global --add safe.directory '$KERNEL_DIR'
 
+$(declare -f apply_patch_dir)
 $(declare -f apply_patches)
 $(declare -f build_kernel)
 $(declare -f clean_spectra_qcom_install)
