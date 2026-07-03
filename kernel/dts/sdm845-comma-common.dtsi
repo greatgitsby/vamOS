@@ -773,7 +773,7 @@
 
 			cam_res_mgr: cam-res-mgr {
 				compatible = "qcom,cam-res-mgr";
-				gpios-shared = <560>;
+				shared-gpios = <&tlmm 8 0>;
 				pinctrl-names = "default", "sleep";
 				pinctrl-0 = <&cam_sensor_vana_active>;
 				pinctrl-1 = <&cam_sensor_vana_suspend>;

@@ -1,0 +1,56 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:01 2001
+From: Trey Moen <trey@moen.ai>
+Date: Thu, 2 Jul 2026 20:30:00 -0700
+Subject: cam-res-mgr: accept phandle form for shared gpios
+
+The legacy "gpios-shared" property takes raw global GPIO numbers, which
+on mainline depend on gpiochip registration order (TLMM base is
+runtime-assigned). Prefer a proper "shared-gpios" gpio phandle array
+(resolved via of_get_named_gpio to the same global number the sensor
+gpio parsing produces) and keep the raw property as a fallback.
+---
+
+diff --git a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_res_mgr/cam_res_mgr.c b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_res_mgr/cam_res_mgr.c
+index 0061831..339ef6d 100644
+--- a/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_res_mgr/cam_res_mgr.c
++++ b/drivers/media/platform/msm/camera/camera_kt/drivers/cam_sensor_module/cam_res_mgr/cam_res_mgr.c
+@@ -13,6 +13,7 @@
+ #include <linux/pinctrl/consumer.h>
+ #include "cam_debug_util.h"
+ #include "cam_res_mgr_api.h"
++#include <linux/of_gpio.h>
+ #include "cam_res_mgr_private.h"
+ #include "camera_main.h"
+ #include "cam_compat.h"
+@@ -756,6 +757,31 @@ static int cam_res_mgr_parse_dt_shared_gpio(
+ 	struct cam_res_mgr_dt *dt = &cam_res->dt;
+ 
+ 	of_node = dev->of_node;
++
++	/* Preferred: phandle form, immune to gpiochip base assignment */
++	dt->num_shared_gpio = of_count_phandle_with_args(of_node,
++		"shared-gpios", "#gpio-cells");
++	if (dt->num_shared_gpio > 0) {
++		int i, gpio;
++
++		if (dt->num_shared_gpio >= MAX_SHARED_GPIO_SIZE) {
++			CAM_ERR(CAM_RES, "shared-gpios: %d max supported: %d",
++				dt->num_shared_gpio, MAX_SHARED_GPIO_SIZE);
++			return -EINVAL;
++		}
++		for (i = 0; i < dt->num_shared_gpio; i++) {
++			gpio = of_get_named_gpio(of_node, "shared-gpios", i);
++			if (gpio < 0) {
++				CAM_ERR(CAM_RES,
++					"shared-gpios[%d] resolve failed: %d",
++					i, gpio);
++				return -EINVAL;
++			}
++			dt->shared_gpio[i] = gpio;
++		}
++		return 0;
++	}
++
+ 	dt->num_shared_gpio = of_property_count_u32_elems(of_node,
+ 		"gpios-shared");
+ 
